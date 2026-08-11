@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { signSession, COOKIE_NAME, SESSION_COOKIE_OPTS } from '../middleware/adminAuth.js'
-import { listApplications, getStats, findApplicationById } from '../models/applicationModel.js'
+import { listApplications, getStats, getTopAssemblies, findApplicationById } from '../models/applicationModel.js'
 import { isAppDbOnline } from '../config/db.js'
 
 // Constant-time string compare to avoid leaking credential length/timing.
@@ -39,8 +39,8 @@ export function postLogout(req, res) {
 export async function getDashboardStats(req, res) {
   if (!isAppDbOnline()) return res.status(503).json({ success: false, message: 'Application database unavailable.' })
   try {
-    const stats = await getStats()
-    return res.json({ success: true, ...stats })
+    const [stats, topAssemblies] = await Promise.all([getStats(), getTopAssemblies(10)])
+    return res.json({ success: true, ...stats, topAssemblies })
   } catch {
     return res.status(500).json({ success: false, message: 'Could not load stats.' })
   }

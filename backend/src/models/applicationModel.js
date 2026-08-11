@@ -84,6 +84,27 @@ export async function getStats() {
   return { total, rural, urban, today }
 }
 
+// Top-N assemblies by number of submitted applications.
+export async function getTopAssemblies(limit = 10) {
+  const db = getAppDb()
+  const coll = db.collection(COLLECTION)
+  const rows = await coll.aggregate([
+    { $match: { 'voter.assembly_no': { $ne: null } } },
+    { $group: {
+      _id: '$voter.assembly_no',
+      name: { $first: '$voter.assembly_name' },
+      count: { $sum: 1 },
+    } },
+    { $sort: { count: -1 } },
+    { $limit: Math.max(1, Math.min(50, parseInt(limit, 10) || 10)) },
+  ]).toArray()
+  return rows.map((r) => ({
+    assembly_no: r._id,
+    assembly_name: r.name || '',
+    count: r.count,
+  }))
+}
+
 // Latest application for a given mobile number (used to detect repeat applicants).
 export async function findLatestApplicationByMobile(mobile) {
   const db = getAppDb()
