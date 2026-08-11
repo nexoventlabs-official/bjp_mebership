@@ -2444,3 +2444,47 @@
 .chatbot-app.bjp-theme .msg-bubble.wide {
   max-width: 520px;
 }
+
+/* ── Header language toggle (EN / Tamil) ───────────────────── */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 2px;
+  margin-left: auto;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.lang-toggle-btn {
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.lang-toggle-btn.active {
+  background: #fff;
+  color: var(--color-harvest-flame, #f26522);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.lang-toggle-btn:not(.active):hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Keep the toggle compact on small screens */
+@media (max-width: 480px) {
+  .lang-toggle-btn { padding: 5px 8px; font-size: 11px; }
+  .lang-toggle { margin-right: 6px; }
+}

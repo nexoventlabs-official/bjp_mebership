@@ -140,14 +140,13 @@ function WelcomeBannerMsg({ onStart }) {
 function WelcomeBackBannerMsg({ name, subtitle }) {
   const { t } = useLang()
   const formattedName = name ? String(name).trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : ''
-  const greeting = formattedName ? `👋 Welcome back, ${formattedName}!` : '👋 Welcome back!'
 
   return (
     <div className="welcome-banner welcome-back-banner">
       <img src="/banner.png" alt="BJP Tamil Nadu" className="banner-img" loading="lazy"
         onError={(e) => { e.target.style.display = 'none' }} />
       <div className="banner-content">
-        <h2>{t(greeting)}</h2>
+        <h2>{formattedName ? t('👋 Welcome back, {name}!', { name: formattedName }) : t('👋 Welcome back!')}</h2>
         <p>{t(subtitle || 'Here is your submitted application for the BJP Tamil Nadu Local Body Elections 2026.')}</p>
         <div className="welcome-back-status-badge">
           <i className="bi bi-shield-fill-check" /> {t('Application Submitted & Verified')}
@@ -729,7 +728,7 @@ function SubmittedMsg({ result, alreadyApplied }) {
 
 // ── Main page ──────────────────────────────────────────────
 export default function ChatbotPage() {
-  const { t } = useLang()
+  const { t, lang, setLang } = useLang()
   const [chatState, setChatState] = useState(S.WELCOME)
   const [messages, setMessages] = useState([])
   const [inputValue, setInputValue] = useState('')
@@ -1268,6 +1267,27 @@ export default function ChatbotPage() {
                 }}
               />
             </div>
+
+            {/* Language toggle: English / Tamil */}
+            <div className="lang-toggle" role="group" aria-label="Language">
+              <button
+                type="button"
+                className={`lang-toggle-btn${lang === 'en' ? ' active' : ''}`}
+                onClick={() => setLang('en')}
+                aria-pressed={lang === 'en'}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                className={`lang-toggle-btn${lang === 'ta' ? ' active' : ''}`}
+                onClick={() => setLang('ta')}
+                aria-pressed={lang === 'ta'}
+              >
+                தமிழ்
+              </button>
+            </div>
+
             <div className="header-social-wrapper" style={{ position: 'relative' }}>
               {/* Social Media Share Toggle Button for Mobile view */}
               <button
