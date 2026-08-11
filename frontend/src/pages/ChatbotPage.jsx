@@ -49,16 +49,19 @@ const emptyAppData = () => ({
   localArea: '',
 })
 
-// ── Session persistence (survive page refresh) ─────────────
+// ── Session persistence (survive page refresh) + inactivity logout ──
 const STORAGE_KEY = 'bjp_lb_session'
-const SESSION_TTL = 24 * 60 * 60 * 1000 // 24 hours
+// Sliding session window: valid for 30 min from the LAST activity. Every save
+// and every user action refreshes savedAt, so an active user stays logged in;
+// 30 min of inactivity expires the session (auto-logout).
+const INACTIVITY_MS = 30 * 60 * 1000 // 30 minutes
 
 function loadSession() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return null
     const data = JSON.parse(raw)
-    if (!data || !data.savedAt || Date.now() - data.savedAt > SESSION_TTL) {
+    if (!data || !data.savedAt || Date.now() - data.savedAt > INACTIVITY_MS) {
       localStorage.removeItem(STORAGE_KEY)
       return null
     }
@@ -72,6 +75,17 @@ function saveSession(data) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, savedAt: Date.now() }))
   } catch { /* ignore quota/serialization errors */ }
+}
+
+// Refresh only the last-activity timestamp (sliding expiry) without touching data.
+function touchSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const data = JSON.parse(raw)
+    data.savedAt = Date.now()
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  } catch { /* ignore */ }
 }
 
 function clearSession() {
@@ -735,11 +749,26 @@ export default function ChatbotPage() {
     // Restore a previous session (so a refresh doesn't reset to the Start screen).
     const saved = loadSession()
     if (saved && Array.isArray(saved.messages) && saved.messages.length && saved.chatState && saved.chatState !== S.WELCOME) {
-      setMessages(saved.messages.map((m) => ({ ...m, ts: m.ts ? new Date(m.ts) : new Date() })))
+      // A refresh mid-submit should land back on the review step, not a spinner.
+      const cs = saved.chatState === S.SUBMITTING ? S.REVIEW : saved.chatState
       setAppData(saved.appData || emptyAppData())
       mobileRef.current = saved.mobile || ''
-      // A refresh mid-submit should land back on the review step, not a spinner.
-      setChatState(saved.chatState === S.SUBMITTING ? S.REVIEW : saved.chatState)
+
+      if (cs === S.SUBMITTED) {
+        // After submission, show a concise "Welcome back" + the submitted card.
+        const submittedMsg = saved.messages.find((m) => m.type === 'submitted')
+        const rebuilt = [{
+          id: `wb-${Date.now()}`, from: 'bot', type: 'text',
+          text: '👋 Welcome back! Here is your submitted application.', ts: new Date(),
+        }]
+        if (submittedMsg) rebuilt.push({ ...submittedMsg, ts: submittedMsg.ts ? new Date(submittedMsg.ts) : new Date() })
+        setMessages(rebuilt)
+        setChatState(S.SUBMITTED)
+        return
+      }
+
+      setMessages(saved.messages.map((m) => ({ ...m, ts: m.ts ? new Date(m.ts) : new Date() })))
+      setChatState(cs)
       return
     }
 
@@ -756,6 +785,61 @@ export default function ChatbotPage() {
     saveSession({ chatState, messages, appData, mobile: mobileRef.current })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, chatState, appData])
+
+  // ── Auto-logout after 30 minutes of inactivity (sliding) ──
+  const inactivityRef = useRef(null)
+  const lastActivityRef = useRef(0)
+
+  const doAutoLogout = useCallback(() => {
+    if (inactivityRef.current) { clearTimeout(inactivityRef.current); inactivityRef.current = null }
+    if (otpTimerRef.current) { clearInterval(otpTimerRef.current); otpTimerRef.current = null }
+    setOtpResendIn(0)
+    clearSession()
+    mobileRef.current = ''
+    setAppData(emptyAppData())
+    setInputValue('')
+    setMessages([])
+    setChatState(S.WELCOME)
+    addMsg('bot', 'text', { text: t('🔒 You were logged out after 30 minutes of inactivity. Tap Start to begin again.') })
+    addMsg('bot', 'welcome_banner', {})
+  }, [addMsg, t])
+
+  useEffect(() => {
+    if (!initializedRef.current) return
+    if (chatState === S.WELCOME) return // nothing to log out from on the start screen
+
+    const arm = () => {
+      if (inactivityRef.current) clearTimeout(inactivityRef.current)
+      inactivityRef.current = setTimeout(() => doAutoLogout(), INACTIVITY_MS)
+    }
+    const onActivity = () => {
+      const now = Date.now()
+      if (now - lastActivityRef.current < 15000) return // throttle to once / 15s
+      lastActivityRef.current = now
+      touchSession()
+      arm()
+    }
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (!loadSession()) { doAutoLogout(); return } // expired while tab was hidden
+      touchSession()
+      arm()
+    }
+
+    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'click']
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }))
+    document.addEventListener('visibilitychange', onVisible)
+
+    lastActivityRef.current = Date.now()
+    touchSession()
+    arm()
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity))
+      document.removeEventListener('visibilitychange', onVisible)
+      if (inactivityRef.current) { clearTimeout(inactivityRef.current); inactivityRef.current = null }
+    }
+  }, [chatState, doAutoLogout])
 
   const patchData = (patch) => setAppData((prev) => ({ ...prev, ...patch }))
 
