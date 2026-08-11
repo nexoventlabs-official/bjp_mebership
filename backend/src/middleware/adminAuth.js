@@ -44,12 +44,16 @@ function parseCookies(header) {
   return out
 }
 
+// In production the frontend (Vercel) and backend (Render) are on different
+// domains, so the session cookie must be SameSite=None + Secure to be sent on
+// cross-site requests. In local dev (same-origin via the Vite proxy) use Lax.
+const IS_PROD = process.env.NODE_ENV === 'production'
 export const SESSION_COOKIE_OPTS = {
   httpOnly: true,
-  sameSite: 'lax',
+  sameSite: IS_PROD ? 'none' : 'lax',
   path: '/',
   maxAge: SESSION_TTL_MS,
-  secure: process.env.NODE_ENV === 'production',
+  secure: IS_PROD,
 }
 
 export function requireAdmin(req, res, next) {
