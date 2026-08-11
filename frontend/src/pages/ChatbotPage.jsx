@@ -1296,8 +1296,10 @@ export default function ChatbotPage() {
                 onClick={() => setShowSocialMenu((prev) => !prev)}
                 title={t('Official Social Media Channels')}
                 aria-label="Social Media Menu"
+                aria-expanded={showSocialMenu}
               >
-                <i className="bi bi-share-fill" style={{ fontSize: 17 }} />
+                <i className="bi bi-share-fill" style={{ fontSize: 16 }} />
+                <i className="bi bi-chevron-down mobile-social-caret" />
               </button>
 
               {/* Desktop direct row of social media icons */}

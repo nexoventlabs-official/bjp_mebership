@@ -2489,38 +2489,61 @@
   .chat-header .lang-toggle { display: none !important; }
 }
 
-/* Language toggle inside the mobile social dropdown */
+/* Down-arrow caret on the mobile social toggle (indicates a dropdown) */
+.mobile-social-toggle {
+  width: auto !important;
+  padding: 0 10px !important;
+  gap: 5px !important;
+  border-radius: 999px !important;
+}
+.mobile-social-caret {
+  font-size: 10px !important;
+  transition: transform 0.2s ease !important;
+}
+.mobile-social-toggle.active .mobile-social-caret {
+  transform: rotate(180deg) !important;
+}
+
+/* Language toggle inside the mobile social dropdown — stacked so it never
+   gets clipped by the narrow (190px) dropdown. */
 .social-dropdown-lang {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 8px;
   border-bottom: 1px solid #eee;
 }
 
 .social-dropdown-lang-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: #555;
+  font-size: 11px;
+  font-weight: 700;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   display: flex;
   align-items: center;
   gap: 6px;
-  white-space: nowrap;
 }
 
 .social-dropdown-lang-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
   background: #f0f0f0;
   border: 1px solid #e0e0e0;
   border-radius: 999px;
-  padding: 2px;
+  padding: 3px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .social-dropdown-lang-toggle .lang-toggle-btn {
+  flex: 1;
   color: #555;
+  text-align: center;
+  padding: 7px 8px;
+  font-size: 12px;
 }
 
 .social-dropdown-lang-toggle .lang-toggle-btn.active {
