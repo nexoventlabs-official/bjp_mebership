@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { signSession, COOKIE_NAME, SESSION_COOKIE_OPTS } from '../middleware/adminAuth.js'
-import { listApplications, getStats, getTopAssemblies, findApplicationById } from '../models/applicationModel.js'
+import { listApplications, getStats, getTopAssemblies, getReport, findApplicationById } from '../models/applicationModel.js'
 import { isAppDbOnline } from '../config/db.js'
 
 // Constant-time string compare to avoid leaking credential length/timing.
@@ -54,6 +54,20 @@ export async function getApplications(req, res) {
     return res.json({ success: true, ...result })
   } catch {
     return res.status(500).json({ success: false, message: 'Could not load applications.' })
+  }
+}
+
+export async function getReports(req, res) {
+  if (!isAppDbOnline()) return res.status(503).json({ success: false, message: 'Application database unavailable.' })
+  try {
+    const { body_type, position, from, to, search, page = 1, page_size = 20 } = req.query
+    const result = await getReport({
+      bodyType: body_type, position, from, to, search,
+      page, pageSize: page_size,
+    })
+    return res.json({ success: true, ...result })
+  } catch {
+    return res.status(500).json({ success: false, message: 'Could not load report.' })
   }
 }
 

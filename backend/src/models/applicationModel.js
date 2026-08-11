@@ -69,6 +69,45 @@ export async function listApplications({ search = '', page = 1, pageSize = 20 } 
   return { applications: rows, total, page: pageNum, pageSize: size }
 }
 
+// Filtered report query for the admin Reports page.
+// Filters: bodyType (rural|urban), position (matches any preference),
+// from/to (submitted_at date range, inclusive), search (id/name/mobile/etc).
+export async function getReport({ bodyType, position, from, to, search, page = 1, pageSize = 20 } = {}) {
+  const db = getAppDb()
+  const coll = db.collection(COLLECTION)
+  const q = {}
+
+  if (bodyType === 'rural' || bodyType === 'urban') q.body_type = bodyType
+  if (position && String(position).trim()) q.position_preferences = String(position).trim()
+
+  const range = {}
+  if (from) { const d = new Date(from); if (!Number.isNaN(d.getTime())) range.$gte = d }
+  if (to) { const d = new Date(to); if (!Number.isNaN(d.getTime())) { d.setHours(23, 59, 59, 999); range.$lte = d } }
+  if (Object.keys(range).length) q.submitted_at = range
+
+  const term = String(search || '').trim()
+  if (term) {
+    const safe = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    q.$or = [
+      { application_id: { $regex: safe, $options: 'i' } },
+      { mobile: { $regex: safe } },
+      { membership_id: { $regex: safe, $options: 'i' } },
+      { epic_no: { $regex: safe, $options: 'i' } },
+      { 'voter.name': { $regex: safe, $options: 'i' } },
+    ]
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1)
+  // Allow large page sizes so CSV export can fetch the full filtered set.
+  const size = Math.min(5000, Math.max(1, parseInt(pageSize, 10) || 20))
+  const skip = (pageNum - 1) * size
+  const [rows, total] = await Promise.all([
+    coll.find(q, { projection: { _id: 0 } }).sort({ submitted_at: -1 }).skip(skip).limit(size).toArray(),
+    coll.countDocuments(q),
+  ])
+  return { applications: rows, total, page: pageNum, pageSize: size }
+}
+
 // Aggregate counts for the admin dashboard.
 export async function getStats() {
   const db = getAppDb()

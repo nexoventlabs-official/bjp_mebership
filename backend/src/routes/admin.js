@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit'
 import { requireAdmin } from '../middleware/adminAuth.js'
 import {
   postLogin, getSession, postLogout,
-  getDashboardStats, getApplications, getApplicationDetail,
+  getDashboardStats, getReports, getApplications, getApplicationDetail,
 } from '../controllers/adminController.js'
 
 const router = Router()
@@ -21,6 +21,7 @@ router.get('/session', requireAdmin, getSession)
 router.post('/logout', postLogout)
 
 router.get('/stats', requireAdmin, getDashboardStats)
+router.get('/reports', requireAdmin, getReports)
 router.get('/applications', requireAdmin, getApplications)
 router.get('/applications/:id', requireAdmin, getApplicationDetail)
 

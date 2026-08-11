@@ -4,8 +4,9 @@ import { admin } from '../../api'
 import '../../styles/admin.css'
 
 const NAV_ITEMS = [
-  { path: '/admin/dashboard',    icon: 'grid-1x2-fill',   label: 'Dashboard' },
-  { path: '/admin/applications', icon: 'card-checklist',  label: 'Applications' },
+  { path: '/admin/dashboard',    icon: 'grid-1x2-fill',              label: 'Dashboard' },
+  { path: '/admin/applications', icon: 'card-checklist',             label: 'Applications' },
+  { path: '/admin/reports',      icon: 'file-earmark-bar-graph-fill', label: 'Reports' },
 ]
 
 export default function AdminLayout() {

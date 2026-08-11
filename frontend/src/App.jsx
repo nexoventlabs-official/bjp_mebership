@@ -8,6 +8,7 @@ import LoginPage from './pages/admin/LoginPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import ApplicationsPage from './pages/admin/ApplicationsPage'
 import ApplicationDetailPage from './pages/admin/ApplicationDetailPage'
+import ReportsPage from './pages/admin/ReportsPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="applications" element={<ApplicationsPage />} />
         <Route path="applications/:id" element={<ApplicationDetailPage />} />
+        <Route path="reports" element={<ReportsPage />} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

@@ -87,6 +87,9 @@ export const admin = {
   getStats: () =>
     api.get('/admin/api/stats'),
 
+  getReports: (params) =>
+    api.get('/admin/api/reports', { params }),
+
   getApplications: (params) =>
     api.get('/admin/api/applications', { params }),
 
