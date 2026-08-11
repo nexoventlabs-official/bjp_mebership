@@ -33,6 +33,16 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }))
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
 
+app.get('/', (req, res) =>
+  res.json({
+    service: 'BJP Tamil Nadu — Local Body Application API',
+    status: 'ok',
+    voterDb: isVoterDbOnline(),
+    appDb: isAppDbOnline(),
+    endpoints: ['/health', '/api/*', '/admin/api/*'],
+  })
+)
+
 app.get('/health', (req, res) =>
   res.json({ ok: true, voterDb: isVoterDbOnline(), appDb: isAppDbOnline() })
 )
