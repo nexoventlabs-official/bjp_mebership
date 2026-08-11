@@ -1251,7 +1251,6 @@ export default function ChatbotPage() {
 
   const inputCfg = getInputCfg()
   const wideTypes = ['voter_card', 'welcome_banner', 'welcome_back_banner', 'local_body', 'position', 'social', 'work', 'local_area', 'review', 'submitted']
-  const isSubmitted = chatState === S.SUBMITTED
 
   return (
     <div className="chatbot-app bjp-theme">
@@ -1336,45 +1335,32 @@ export default function ChatbotPage() {
             </div>
           )}
 
-          {/* Input area — only render when there is an input bar or a done bar to show */}
-          {(inputCfg || isSubmitted) && (
+          {/* Input area — render only when an active text/number input is required */}
+          {inputCfg && (
             <footer className="chat-input-area">
-              {inputCfg ? (
-                <form className="chat-form" onSubmit={handleSubmit} style={{ position: 'relative' }}>
-                  {sendHint && <div className="send-hint-bubble" role="status">{sendHint}</div>}
-                  <div className="chat-input-wrapper">
-                    <input
-                      className="chat-input"
-                      value={inputValue}
-                      onChange={handleInputChange}
-                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }}
-                      placeholder={inputCfg.placeholder}
-                      aria-label={inputCfg.placeholder}
-                      type={inputCfg.type}
-                      maxLength={inputCfg.maxLength}
-                      inputMode={inputCfg.inputMode}
-                      autoComplete="off"
-                      disabled={isTyping}
-                      autoFocus
-                    />
-                  </div>
-                  <button type="submit" className={`chat-send-btn${getIsSendDisabled() ? ' not-ready' : ''}`}
-                    aria-label={t('Send')} title={t('Send')}>
-                    <i className="bi bi-send-fill" />
-                  </button>
-                </form>
-              ) : (
-                <div className="chat-form done-bar">
-                  <div className="chat-input-wrapper">
-                    <span className="done-status">
-                      <i className="bi bi-shield-fill-check text-success" /> {t('Application Submitted')}
-                    </span>
-                  </div>
-                  <button className="chat-send-btn menu-btn" onClick={handleRestart} title={t('New Application')}>
-                    <i className="bi bi-plus-lg" />
-                  </button>
+              <form className="chat-form" onSubmit={handleSubmit} style={{ position: 'relative' }}>
+                {sendHint && <div className="send-hint-bubble" role="status">{sendHint}</div>}
+                <div className="chat-input-wrapper">
+                  <input
+                    className="chat-input"
+                    value={inputValue}
+                    onChange={handleInputChange}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit() } }}
+                    placeholder={inputCfg.placeholder}
+                    aria-label={inputCfg.placeholder}
+                    type={inputCfg.type}
+                    maxLength={inputCfg.maxLength}
+                    inputMode={inputCfg.inputMode}
+                    autoComplete="off"
+                    disabled={isTyping}
+                    autoFocus
+                  />
                 </div>
-              )}
+                <button type="submit" className={`chat-send-btn${getIsSendDisabled() ? ' not-ready' : ''}`}
+                  aria-label={t('Send')} title={t('Send')}>
+                  <i className="bi bi-send-fill" />
+                </button>
+              </form>
             </footer>
           )}
         </div>
