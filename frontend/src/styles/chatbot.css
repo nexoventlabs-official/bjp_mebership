@@ -1460,11 +1460,16 @@
   filter: none !important;
 }
 
-/* Right side social media icons */
+/* Right side social media icons & Globe button */
+.header-social-wrapper {
+  display: flex !important;
+  align-items: center !important;
+}
+
 .header-social-icons {
   display: flex !important;
   align-items: center !important;
-  gap: 12px !important;
+  gap: 10px !important;
 }
 
 .social-icon-btn {
@@ -1479,6 +1484,130 @@
   justify-content: center !important;
   transition: all 0.2s ease !important;
   text-decoration: none !important;
+  cursor: pointer !important;
+}
+
+.mobile-social-toggle {
+  display: none !important;
+}
+
+/* Responsive visibility for mobile screens (< 640px) */
+@media (max-width: 640px) {
+  .desktop-social-icons {
+    display: none !important;
+  }
+  .mobile-social-toggle {
+    display: flex !important;
+  }
+}
+
+.mobile-social-toggle.active,
+.mobile-social-toggle:hover {
+  background-color: #02a14d !important;
+  border-color: #02a14d !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(2, 161, 77, 0.4) !important;
+}
+
+/* Social Media Dropdown Menu */
+.social-dropdown-backdrop {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background: rgba(0, 0, 0, 0.2) !important;
+  z-index: 9998 !important;
+}
+
+.social-dropdown-menu {
+  position: absolute !important;
+  top: 48px !important;
+  right: 0 !important;
+  width: 190px !important;
+  background: #ffffff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  padding: 8px !important;
+  z-index: 9999 !important;
+  animation: fadeInDown 0.18s ease-out !important;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.social-dropdown-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 4px 8px 6px !important;
+  border-bottom: 1px solid #f0f0f0 !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  color: #777777 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.social-dropdown-close {
+  background: none !important;
+  border: none !important;
+  font-size: 13px !important;
+  color: #999999 !important;
+  cursor: pointer !important;
+  padding: 2px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+.social-dropdown-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  margin-top: 6px !important;
+}
+
+.social-dropdown-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  padding: 8px 10px !important;
+  border-radius: 8px !important;
+  text-decoration: none !important;
+  color: #222222 !important;
+  font-size: 13.5px !important;
+  font-weight: 700 !important;
+  transition: all 0.15s ease !important;
+}
+
+.social-dropdown-item:hover {
+  background-color: #f7f7f7 !important;
+}
+
+.social-dropdown-item.facebook:hover {
+  color: #1877F2 !important;
+  background-color: rgba(24, 119, 242, 0.1) !important;
+}
+.social-dropdown-item.twitter:hover {
+  color: #000000 !important;
+  background-color: rgba(0, 0, 0, 0.08) !important;
+}
+.social-dropdown-item.instagram:hover {
+  color: #d6249f !important;
+  background-color: rgba(214, 36, 159, 0.1) !important;
+}
+.social-dropdown-item.youtube:hover {
+  color: #FF0000 !important;
+  background-color: rgba(255, 0, 0, 0.1) !important;
 }
 
 /* Official Brand Hover Colors for Social Media Icons */

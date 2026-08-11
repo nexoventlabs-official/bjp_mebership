@@ -1,94 +1,46 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler
+} from 'chart.js'
+import { Doughnut, Bar } from 'react-chartjs-2'
 import { admin } from '../../api'
 import '../../styles/admin.css'
 
-function StatCard({ icon, label, value, color, bg }) {
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+  Filler
+)
+
+function StatCard({ icon, label, value, color, bg, subtitle }) {
   return (
     <div className="stat-card" style={{ '--sc-color': color, '--sc-bg': bg }}>
-      <div className="stat-card-icon"><i className={`bi bi-${icon}`} /></div>
+      <div className="stat-card-top">
+        <div className="stat-card-icon" style={{ backgroundColor: bg, color }}>
+          <i className={`bi bi-${icon}`} />
+        </div>
+        {subtitle && <span className="stat-card-badge">{subtitle}</span>}
+      </div>
       <div className="stat-card-value">{value ?? '—'}</div>
       <div className="stat-card-label">{label}</div>
-    </div>
-  )
-}
-
-const RURAL_COLOR = '#43a047'
-const URBAN_COLOR = '#1565c0'
-
-// Rural vs Urban — donut + legend
-function RuralUrbanChart({ rural = 0, urban = 0 }) {
-  const total = rural + urban
-  const ruralPct = total ? Math.round((rural / total) * 100) : 0
-  const urbanPct = total ? 100 - ruralPct : 0
-  const gradient = total
-    ? `conic-gradient(${RURAL_COLOR} 0 ${ruralPct}%, ${URBAN_COLOR} ${ruralPct}% 100%)`
-    : 'conic-gradient(#e0e0e0 0 100%)'
-
-  const LegendRow = ({ color, label, count, pct }) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0' }}>
-      <span style={{ width: 12, height: 12, borderRadius: 3, background: color, flexShrink: 0 }} />
-      <span style={{ fontSize: 13.5, color: 'var(--text-primary)', fontWeight: 600, minWidth: 56 }}>{label}</span>
-      <span style={{ fontSize: 13.5, color: 'var(--text-secondary)' }}>{count} ({pct}%)</span>
-    </div>
-  )
-
-  return (
-    <div className="admin-card">
-      <div className="admin-card-header">
-        <h6 className="admin-card-title"><i className="bi bi-pie-chart-fill text-coral" /> Rural vs Urban</h6>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 24, padding: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <div style={{ position: 'relative', width: 150, height: 150, flexShrink: 0 }}>
-          <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: gradient }} />
-          <div style={{ position: 'absolute', inset: 0, margin: 'auto', width: 92, height: 92, borderRadius: '50%', background: 'var(--bg-surface, #fff)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 0 1px var(--border-dim, rgba(0,0,0,0.06))' }}>
-            <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)' }}>{total}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Total</div>
-          </div>
-        </div>
-        <div>
-          <LegendRow color={RURAL_COLOR} label="Rural" count={rural} pct={ruralPct} />
-          <LegendRow color={URBAN_COLOR} label="Urban" count={urban} pct={urbanPct} />
-        </div>
-      </div>
-      {total === 0 && (
-        <div style={{ textAlign: 'center', paddingBottom: 16, fontSize: 12, color: 'var(--admin-ink-dim)' }}>No applications yet.</div>
-      )}
-    </div>
-  )
-}
-
-// Top 10 assemblies — horizontal bars
-function TopAssembliesChart({ data = [] }) {
-  const max = Math.max(1, ...data.map((d) => d.count))
-  return (
-    <div className="admin-card">
-      <div className="admin-card-header">
-        <h6 className="admin-card-title"><i className="bi bi-bar-chart-fill text-coral" /> Top 10 Assemblies by Applications</h6>
-      </div>
-      <div style={{ padding: '12px 20px 18px' }}>
-        {data.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 20, fontSize: 12, color: 'var(--admin-ink-dim)' }}>No applications yet.</div>
-        ) : (
-          data.map((d, i) => {
-            const pct = Math.round((d.count / max) * 100)
-            const label = d.assembly_name ? d.assembly_name : `AC ${d.assembly_no}`
-            return (
-              <div key={d.assembly_no ?? i} style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: 12.5 }}>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '75%' }} title={`${label} (AC ${d.assembly_no})`}>
-                    <span style={{ color: 'var(--admin-ink-dim)', marginRight: 6 }}>{i + 1}.</span>{label}
-                  </span>
-                  <span style={{ color: 'var(--text-secondary)', fontWeight: 700 }}>{d.count}</span>
-                </div>
-                <div style={{ height: 10, borderRadius: 6, background: 'var(--border-dim, rgba(0,0,0,0.06))', overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, borderRadius: 6, background: 'linear-gradient(90deg, #f26522, #E53935)', transition: 'width 0.4s ease' }} />
-                </div>
-              </div>
-            )
-          })
-        )}
-      </div>
     </div>
   )
 }
@@ -100,7 +52,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.allSettled([admin.getStats(), admin.getApplications({ page: 1, page_size: 5 })])
+    Promise.allSettled([admin.getStats(), admin.getApplications({ page: 1, page_size: 6 })])
       .then(([s, r]) => {
         if (s.status === 'fulfilled') setStats(s.value)
         if (r.status === 'fulfilled') setRecent(r.value.applications || [])
@@ -112,45 +64,202 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
-        <div className="spinner-border text-danger" role="status" />
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+        <div className="spinner-border text-warning" role="status" style={{ width: '3rem', height: '3rem' }} />
       </div>
     )
   }
 
+  // Doughnut Chart Data (Rural vs Urban)
+  const ruralCount = s.rural || 0
+  const urbanCount = s.urban || 0
+  const totalCount = s.total || (ruralCount + urbanCount)
+
+  const doughnutData = {
+    labels: ['Rural Candidates', 'Urban Candidates'],
+    datasets: [
+      {
+        data: [ruralCount, urbanCount],
+        backgroundColor: ['#02a14d', '#f76201'],
+        hoverBackgroundColor: ['#02823e', '#e05500'],
+        borderWidth: 2,
+        borderColor: '#ffffff',
+      },
+    ],
+  }
+
+  const doughnutOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    cutout: '72%',
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          usePointStyle: true,
+          font: { family: 'Inter', size: 12, weight: '600' },
+          padding: 16,
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: (context) => {
+            const val = context.raw || 0
+            const pct = totalCount ? Math.round((val / totalCount) * 100) : 0
+            return ` ${context.label}: ${val} (${pct}%)`
+          },
+        },
+      },
+    },
+  }
+
+  // Bar Chart Data (Top Assemblies)
+  const topAssemblies = s.topAssemblies || []
+  const barLabels = topAssemblies.length
+    ? topAssemblies.map((d) => d.assembly_name || `AC ${d.assembly_no}`)
+    : ['Chennai', 'Coimbatore', 'Madurai', 'Trichy', 'Salem', 'Tirunelveli']
+  const barValues = topAssemblies.length
+    ? topAssemblies.map((d) => d.count)
+    : [0, 0, 0, 0, 0, 0]
+
+  const barData = {
+    labels: barLabels,
+    datasets: [
+      {
+        label: 'Applications',
+        data: barValues,
+        backgroundColor: 'rgba(247, 98, 1, 0.85)',
+        hoverBackgroundColor: '#f76201',
+        borderRadius: 8,
+        barThickness: 24,
+      },
+    ],
+  }
+
+  const barOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1a1a1a',
+        titleFont: { size: 13, weight: '700' },
+        bodyFont: { size: 12 },
+        padding: 10,
+        displayColors: false,
+      },
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { family: 'Inter', size: 11, weight: '600' } },
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.05)' },
+        ticks: { precision: 0, font: { family: 'Inter', size: 11 } },
+        beginAtZero: true,
+      },
+    },
+  }
+
   return (
-    <div>
+    <div className="admin-dashboard-view">
       <div className="page-header">
-        <h1><i className="bi bi-grid-1x2-fill me-2 text-coral" />Dashboard</h1>
-        <p>Local Body Candidate Applications — overview</p>
+        <div className="page-title-group">
+          <h1>
+            <i className="bi bi-grid-1x2-fill me-2 text-saffron" />
+            Candidate Applications Dashboard
+          </h1>
+          <p>Real-time analytics and application statistics for BJP Local Body Candidates 2026</p>
+        </div>
       </div>
 
+      {/* KPI Stat Cards */}
       <div className="stat-cards-grid">
-        <StatCard icon="card-checklist"  label="Total Applications" value={s.total} color="#E53935" bg="rgba(229,57,53,0.12)" />
-        <StatCard icon="calendar-check"  label="Today"              value={s.today} color="#6a1b9a" bg="rgba(106,27,154,0.12)" />
-        <StatCard icon="tree-fill"       label="Rural"              value={s.rural} color="#43a047" bg="rgba(46,125,50,0.12)" />
-        <StatCard icon="building-fill"   label="Urban"              value={s.urban} color="#1565c0" bg="rgba(21,101,192,0.12)" />
+        <StatCard
+          icon="card-checklist"
+          label="Total Applications"
+          value={s.total}
+          color="#f76201"
+          bg="rgba(247, 98, 1, 0.12)"
+          subtitle="Total Received"
+        />
+        <StatCard
+          icon="calendar-check-fill"
+          label="Today's Applicants"
+          value={s.today}
+          color="#8b5cf6"
+          bg="rgba(139, 92, 246, 0.12)"
+          subtitle="24h Activity"
+        />
+        <StatCard
+          icon="tree-fill"
+          label="Rural Panchayat"
+          value={s.rural}
+          color="#02a14d"
+          bg="rgba(2, 161, 77, 0.12)"
+          subtitle="Union / Village"
+        />
+        <StatCard
+          icon="building-fill"
+          label="Urban Body"
+          value={s.urban}
+          color="#2563eb"
+          bg="rgba(37, 99, 235, 0.12)"
+          subtitle="Corporation / Municipality"
+        />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20, marginTop: 24 }}>
-        <RuralUrbanChart rural={s.rural || 0} urban={s.urban || 0} />
-        <TopAssembliesChart data={s.topAssemblies || []} />
+      {/* Analytics Charts Row */}
+      <div className="dashboard-charts-grid">
+        {/* Doughnut Chart */}
+        <div className="admin-card chart-card">
+          <div className="admin-card-header">
+            <h6 className="admin-card-title">
+              <i className="bi bi-pie-chart-fill text-saffron" /> Rural vs Urban Distribution
+            </h6>
+          </div>
+          <div className="chart-container" style={{ position: 'relative', height: 260, padding: 16 }}>
+            <Doughnut data={doughnutData} options={doughnutOptions} />
+            <div className="chart-center-overlay">
+              <span className="count">{totalCount}</span>
+              <span className="label">Total</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Bar Chart */}
+        <div className="admin-card chart-card">
+          <div className="admin-card-header">
+            <h6 className="admin-card-title">
+              <i className="bi bi-bar-chart-line-fill text-saffron" /> Top Assemblies by Applications
+            </h6>
+          </div>
+          <div className="chart-container" style={{ height: 260, padding: 16 }}>
+            <Bar data={barData} options={barOptions} />
+          </div>
+        </div>
       </div>
 
+      {/* Recent Applications Table */}
       <div className="admin-card" style={{ marginTop: 24 }}>
         <div className="admin-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h6 className="admin-card-title"><i className="bi bi-clock-history text-coral" /> Recent Applications</h6>
+          <h6 className="admin-card-title">
+            <i className="bi bi-clock-history text-saffron" /> Recent Applications
+          </h6>
           <button
+            type="button"
+            className="btn-view-all"
             onClick={() => navigate('/admin/applications')}
-            style={{ background: 'none', border: 'none', color: 'var(--color-harvest-flame, #f26522)', fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
           >
-            View all <i className="bi bi-arrow-right" />
+            View All Registry <i className="bi bi-arrow-right" />
           </button>
         </div>
 
         {recent.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 24, color: 'var(--admin-ink-dim)', fontSize: 13 }}>
-            No applications yet.
+          <div style={{ textAlign: 'center', padding: 32, color: 'var(--admin-ink-dim)', fontSize: 13 }}>
+            <i className="bi bi-inbox" style={{ fontSize: 36, display: 'block', marginBottom: 8, opacity: 0.5 }} />
+            No application submissions recorded yet.
           </div>
         ) : (
           <div className="admin-table-wrap">
@@ -158,21 +267,54 @@ export default function DashboardPage() {
               <thead>
                 <tr>
                   <th>Application ID</th>
-                  <th>Name</th>
-                  <th>Mobile</th>
-                  <th>Type</th>
-                  <th>Submitted</th>
+                  <th>Candidate Name</th>
+                  <th>Mobile Number</th>
+                  <th>Body Type</th>
+                  <th>District / Ward</th>
+                  <th>Submitted Time</th>
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
                 {recent.map((a) => (
-                  <tr key={a.application_id} style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/admin/applications/${a.application_id}`)}>
-                    <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{a.application_id}</td>
-                    <td>{a.voter?.name || '—'}</td>
+                  <tr
+                    key={a.application_id}
+                    className="table-row-hover"
+                    onClick={() => navigate(`/admin/applications/${a.application_id}`)}
+                  >
+                    <td>
+                      <span className="app-id-pill">{a.application_id}</span>
+                    </td>
+                    <td className="fw-bold">{a.voter?.name || '—'}</td>
                     <td>{a.mobile}</td>
-                    <td style={{ textTransform: 'capitalize' }}>{a.body_type}</td>
-                    <td>{a.submitted_at ? new Date(a.submitted_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                    <td>
+                      <span className={`body-type-badge ${a.body_type}`}>
+                        {a.body_type === 'urban' ? '🏙️ Urban' : '🌾 Rural'}
+                      </span>
+                    </td>
+                    <td>{a.voter?.district || a.local_body?.ward || '—'}</td>
+                    <td>
+                      {a.submitted_at
+                        ? new Date(a.submitted_at).toLocaleString('en-IN', {
+                            day: 'numeric',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : '—'}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-table-action"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          navigate(`/admin/applications/${a.application_id}`)
+                        }}
+                      >
+                        <i className="bi bi-eye-fill" /> View
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

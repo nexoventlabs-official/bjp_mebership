@@ -12,12 +12,11 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const [checking, setChecking]       = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 768)
+  const [timeStr, setTimeStr]         = useState('')
 
   useEffect(() => {
     admin.getSession()
       .then((data) => {
-        // Verify the response is a real authenticated session, not a stale
-        // HTML page or unexpected response (e.g. when VITE_API_URL is not set)
         if (data && data.success === true) {
           setChecking(false)
         } else {
@@ -26,6 +25,16 @@ export default function AdminLayout() {
       })
       .catch(() => navigate('/admin/login', { replace: true }))
   }, [navigate])
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date()
+      setTimeStr(now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    }
+    updateClock()
+    const timer = setInterval(updateClock, 1000)
+    return () => clearInterval(timer)
+  }, [])
 
   const handleLogout = async () => {
     try { await admin.logout() } catch {}
@@ -42,7 +51,7 @@ export default function AdminLayout() {
 
   return (
     <div className="admin-layout">
-      {/* Mobile backdrop — closes sidebar when tapped */}
+      {/* Mobile backdrop */}
       <div
         className={`admin-sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`}
         onClick={() => setSidebarOpen(false)}
@@ -57,7 +66,7 @@ export default function AdminLayout() {
           {sidebarOpen && (
             <div>
               <div className="admin-brand">BJP Tamil Nadu</div>
-              <div className="admin-tagline">Admin Panel</div>
+              <div className="admin-tagline">Local Body Candidate Portal</div>
             </div>
           )}
         </div>
@@ -79,7 +88,7 @@ export default function AdminLayout() {
         <div className="admin-sidebar-footer">
           <button className="admin-logout-btn" onClick={handleLogout} title={!sidebarOpen ? 'Logout' : undefined}>
             <i className="bi bi-box-arrow-left" />
-            {sidebarOpen && <span>Logout</span>}
+            {sidebarOpen && <span>Logout Panel</span>}
           </button>
         </div>
       </aside>
@@ -90,8 +99,26 @@ export default function AdminLayout() {
           <button className="admin-toggle-btn" onClick={() => setSidebarOpen((o) => !o)} aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
             <i className={`bi bi-${sidebarOpen ? 'layout-sidebar-reverse' : 'layout-sidebar'}`} />
           </button>
-          <div className="admin-topbar-brand">BJP Tamil Nadu — Admin</div>
-          <div className="admin-topbar-right" />
+          <div className="admin-topbar-brand">
+            <span className="bjp-badge-pill">BJP TN 2026</span>
+            <span>Local Body Elections Admin</span>
+          </div>
+
+          <div className="admin-topbar-right">
+            <div className="admin-topbar-clock">
+              <i className="bi bi-clock-history me-1" />
+              <span>{timeStr}</span>
+            </div>
+            <div className="admin-user-badge">
+              <div className="admin-avatar">
+                <i className="bi bi-person-fill" />
+              </div>
+              <div className="admin-user-info">
+                <span className="admin-name">Admin User</span>
+                <span className="admin-role">Super Admin</span>
+              </div>
+            </div>
+          </div>
         </header>
 
         <main className="admin-content">
