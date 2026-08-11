@@ -12,9 +12,23 @@ const app = express()
 app.set('trust proxy', 1)
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
 
-// CORS — allow the configured client origin (Vite dev server on :3000).
-const clientOrigin = process.env.CLIENT_ORIGIN || 'http://localhost:3000'
-app.use(cors({ origin: clientOrigin, credentials: true }))
+// CORS — allow one or more client origins (comma-separated in CLIENT_ORIGIN).
+// Trailing slashes are tolerated. Defaults cover the Vercel frontend + local dev.
+const allowedOrigins = (process.env.CLIENT_ORIGIN ||
+  'https://bjp-mebership.vercel.app,http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim().replace(/\/+$/, ''))
+  .filter(Boolean)
+
+app.use(cors({
+  origin(origin, cb) {
+    // Non-browser requests (curl, health checks, same-origin) have no Origin.
+    if (!origin) return cb(null, true)
+    const clean = origin.replace(/\/+$/, '')
+    return cb(null, allowedOrigins.includes(clean))
+  },
+  credentials: true,
+}))
 
 app.use(express.json({ limit: '1mb' }))
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'))
