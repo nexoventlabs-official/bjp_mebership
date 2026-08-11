@@ -2483,8 +2483,47 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
-/* Keep the toggle compact on small screens */
-@media (max-width: 480px) {
-  .lang-toggle-btn { padding: 5px 8px; font-size: 11px; }
-  .lang-toggle { margin-right: 6px; }
+/* On mobile the inline header toggle is hidden — the language switch lives
+   inside the social dropdown instead (keeps the header uncluttered). */
+@media (max-width: 640px) {
+  .chat-header .lang-toggle { display: none !important; }
+}
+
+/* Language toggle inside the mobile social dropdown */
+.social-dropdown-lang {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.social-dropdown-lang-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.social-dropdown-lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.social-dropdown-lang-toggle .lang-toggle-btn {
+  color: #555;
+}
+
+.social-dropdown-lang-toggle .lang-toggle-btn.active {
+  background: var(--color-harvest-flame, #f26522);
+  color: #fff;
 }

@@ -1330,11 +1330,35 @@ export default function ChatbotPage() {
                   <div className="social-dropdown-backdrop" onClick={() => setShowSocialMenu(false)} />
                   <div className="social-dropdown-menu">
                     <div className="social-dropdown-header">
-                      <span>Official Channels</span>
+                      <span>{t('Official Channels')}</span>
                       <button type="button" className="social-dropdown-close" onClick={() => setShowSocialMenu(false)}>
                         <i className="bi bi-x-lg" />
                       </button>
                     </div>
+
+                    {/* Language toggle (mobile) */}
+                    <div className="social-dropdown-lang">
+                      <span className="social-dropdown-lang-label"><i className="bi bi-translate" /> Language / மொழி</span>
+                      <div className="social-dropdown-lang-toggle">
+                        <button
+                          type="button"
+                          className={`lang-toggle-btn${lang === 'en' ? ' active' : ''}`}
+                          onClick={() => { setLang('en'); setShowSocialMenu(false) }}
+                          aria-pressed={lang === 'en'}
+                        >
+                          EN
+                        </button>
+                        <button
+                          type="button"
+                          className={`lang-toggle-btn${lang === 'ta' ? ' active' : ''}`}
+                          onClick={() => { setLang('ta'); setShowSocialMenu(false) }}
+                          aria-pressed={lang === 'ta'}
+                        >
+                          தமிழ்
+                        </button>
+                      </div>
+                    </div>
+
                     <div className="social-dropdown-list">
                       <a href="https://www.facebook.com/BJP4TamilNadu/" target="_blank" rel="noopener noreferrer" className="social-dropdown-item facebook" onClick={() => setShowSocialMenu(false)}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
