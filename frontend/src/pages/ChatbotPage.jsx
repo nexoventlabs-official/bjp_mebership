@@ -49,6 +49,35 @@ const emptyAppData = () => ({
   localArea: '',
 })
 
+// ── Session persistence (survive page refresh) ─────────────
+const STORAGE_KEY = 'bjp_lb_session'
+const SESSION_TTL = 24 * 60 * 60 * 1000 // 24 hours
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const data = JSON.parse(raw)
+    if (!data || !data.savedAt || Date.now() - data.savedAt > SESSION_TTL) {
+      localStorage.removeItem(STORAGE_KEY)
+      return null
+    }
+    return data
+  } catch {
+    return null
+  }
+}
+
+function saveSession(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, savedAt: Date.now() }))
+  } catch { /* ignore quota/serialization errors */ }
+}
+
+function clearSession() {
+  try { localStorage.removeItem(STORAGE_KEY) } catch { /* ignore */ }
+}
+
 // Human-readable one-liner for a chosen local body.
 function localBodySummary(bodyType, lb) {
   if (!lb) return ''
@@ -702,10 +731,31 @@ export default function ChatbotPage() {
   useEffect(() => {
     if (initializedRef.current) return
     initializedRef.current = true
+
+    // Restore a previous session (so a refresh doesn't reset to the Start screen).
+    const saved = loadSession()
+    if (saved && Array.isArray(saved.messages) && saved.messages.length && saved.chatState && saved.chatState !== S.WELCOME) {
+      setMessages(saved.messages.map((m) => ({ ...m, ts: m.ts ? new Date(m.ts) : new Date() })))
+      setAppData(saved.appData || emptyAppData())
+      mobileRef.current = saved.mobile || ''
+      // A refresh mid-submit should land back on the review step, not a spinner.
+      setChatState(saved.chatState === S.SUBMITTING ? S.REVIEW : saved.chatState)
+      return
+    }
+
     addMsg('bot', 'welcome_banner', {})
     setChatState(S.WELCOME)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Persist the session on every meaningful change (once past the welcome step).
+  useEffect(() => {
+    if (!initializedRef.current) return
+    if (chatState === S.WELCOME) return
+    if (chatState === S.SUBMITTING) return // don't persist the transient submitting state
+    saveSession({ chatState, messages, appData, mobile: mobileRef.current })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, chatState, appData])
 
   const patchData = (patch) => setAppData((prev) => ({ ...prev, ...patch }))
 
@@ -936,6 +986,7 @@ export default function ChatbotPage() {
 
   const handleRestart = () => {
     stopOtpCountdown()
+    clearSession()
     mobileRef.current = ''
     setAppData(emptyAppData())
     setInputValue('')
