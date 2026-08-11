@@ -136,6 +136,27 @@ function WelcomeBannerMsg({ onStart }) {
   )
 }
 
+// ── Welcome back banner card ────────────────────────────────
+function WelcomeBackBannerMsg({ name, subtitle }) {
+  const { t } = useLang()
+  const formattedName = name ? String(name).trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : ''
+  const greeting = formattedName ? `👋 Welcome back, ${formattedName}!` : '👋 Welcome back!'
+
+  return (
+    <div className="welcome-banner welcome-back-banner">
+      <img src="/banner.png" alt="BJP Tamil Nadu" className="banner-img" loading="lazy"
+        onError={(e) => { e.target.style.display = 'none' }} />
+      <div className="banner-content">
+        <h2>{t(greeting)}</h2>
+        <p>{t(subtitle || 'Here is your submitted application for the BJP Tamil Nadu Local Body Elections 2026.')}</p>
+        <div className="welcome-back-status-badge">
+          <i className="bi bi-shield-fill-check" /> {t('Application Submitted & Verified')}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Voter confirmation card ────────────────────────────────
 function VoterCardMsg({ voter, active, onConfirm, onRetry, disabled }) {
   const { t } = useLang()
@@ -755,11 +776,14 @@ export default function ChatbotPage() {
       mobileRef.current = saved.mobile || ''
 
       if (cs === S.SUBMITTED) {
-        // After submission, show a concise "Welcome back" + the submitted card.
+        // After submission, show a rich "Welcome back" card with person's name + the submitted card.
         const submittedMsg = saved.messages.find((m) => m.type === 'submitted')
+        const voterName = saved.appData?.voter?.name || saved.appData?.voter?.voter_name || ''
         const rebuilt = [{
-          id: `wb-${Date.now()}`, from: 'bot', type: 'text',
-          text: '👋 Welcome back! Here is your submitted application.', ts: new Date(),
+          id: `wb-${Date.now()}`, from: 'bot', type: 'welcome_back_banner',
+          name: voterName,
+          subtitle: 'Here is your submitted application for the BJP Tamil Nadu Local Body Elections 2026.',
+          ts: new Date(),
         }]
         if (submittedMsg) rebuilt.push({ ...submittedMsg, ts: submittedMsg.ts ? new Date(submittedMsg.ts) : new Date() })
         setMessages(rebuilt)
@@ -1143,6 +1167,8 @@ export default function ChatbotPage() {
       }
       case 'welcome_banner':
         return <WelcomeBannerMsg onStart={handleStart} />
+      case 'welcome_back_banner':
+        return <WelcomeBackBannerMsg name={msg.name || appData.voter?.name} subtitle={msg.subtitle} />
       case 'voter_card':
         return (
           <VoterCardMsg
@@ -1224,7 +1250,7 @@ export default function ChatbotPage() {
   }
 
   const inputCfg = getInputCfg()
-  const wideTypes = ['voter_card', 'welcome_banner', 'local_body', 'position', 'social', 'work', 'local_area', 'review', 'submitted']
+  const wideTypes = ['voter_card', 'welcome_banner', 'welcome_back_banner', 'local_body', 'position', 'social', 'work', 'local_area', 'review', 'submitted']
   const isSubmitted = chatState === S.SUBMITTED
 
   return (
