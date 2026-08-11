@@ -9,31 +9,27 @@ const api = axios.create({
   timeout: 30000,
 })
 
-// ── CSRF token handling for admin mutating requests ───────────────
-let _csrfToken = null
-async function ensureCsrfToken() {
-  if (_csrfToken) return _csrfToken
-  const base = import.meta.env.VITE_API_URL || ''
-  const res = await axios.get(base + '/admin/api/csrf-token', { withCredentials: true })
-  _csrfToken = res.data && res.data.csrfToken ? res.data.csrfToken : null
-  return _csrfToken
+// ── Admin bearer token ─────────────────────────────────────────────
+// The frontend (Vercel) and backend (Render) live on different domains, so a
+// session cookie would be a blocked third-party cookie. Instead the admin login
+// returns a signed token that we store and send as an Authorization header.
+const ADMIN_TOKEN_KEY = 'bjp_admin_token'
+export const getAdminToken = () => {
+  try { return localStorage.getItem(ADMIN_TOKEN_KEY) } catch { return null }
+}
+const setAdminToken = (t) => {
+  try { t ? localStorage.setItem(ADMIN_TOKEN_KEY, t) : localStorage.removeItem(ADMIN_TOKEN_KEY) } catch { /* ignore */ }
 }
 
-api.interceptors.request.use(async (cfg) => {
+api.interceptors.request.use((cfg) => {
   const url = cfg.url || ''
-  const method = (cfg.method || 'get').toLowerCase()
-  const mutating = ['post', 'put', 'patch', 'delete'].includes(method)
-  const isAdminAuthRoute = url.includes('/admin/api/login') ||
-                           url.includes('/admin/api/send-otp') ||
-                           url.includes('/admin/api/verify-otp')
-  if (mutating && url.startsWith('/admin/api') && !isAdminAuthRoute) {
-    try {
-      const token = await ensureCsrfToken()
-      if (token) {
-        cfg.headers = cfg.headers || {}
-        cfg.headers['x-csrf-token'] = token
-      }
-    } catch (_) { /* proceed; server will 403 if token is required */ }
+  // Attach the bearer token to protected admin routes (not the login call).
+  if (url.startsWith('/admin/api') && !url.includes('/admin/api/login')) {
+    const token = getAdminToken()
+    if (token) {
+      cfg.headers = cfg.headers || {}
+      cfg.headers.Authorization = `Bearer ${token}`
+    }
   }
   return cfg
 })
@@ -42,7 +38,8 @@ api.interceptors.response.use(
   (response) => response.data,
   (error) => {
     if (error.response) {
-      if (error.response.status === 403) _csrfToken = null
+      // Session invalid/expired — drop the stored admin token.
+      if (error.response.status === 401) setAdminToken(null)
       return Promise.reject(error.response.data || { message: 'Server error' })
     }
     if (error.code === 'ECONNABORTED') {
@@ -68,19 +65,21 @@ export const chat = {
 
   getApplication: (applicationId) =>
     api.get(`/api/application/${applicationId}`),
-
-  // Used by the admin Reports page (districts/assemblies dropdowns).
-  getDistrictsData: () =>
-    api.get('/api/districts-data'),
 }
 
-// ── Admin console API (username/password + applications) ──────────
+// ── Admin console API (username/password + bearer token) ──────────
 export const admin = {
-  login: (username, password) =>
-    api.post('/admin/api/login', { username, password }),
+  login: async (username, password) => {
+    const data = await api.post('/admin/api/login', { username, password })
+    if (data && data.token) setAdminToken(data.token)
+    return data
+  },
 
-  logout: () =>
-    api.post('/admin/api/logout'),
+  logout: async () => {
+    try { await api.post('/admin/api/logout') } catch { /* ignore */ }
+    setAdminToken(null)
+    return { success: true }
+  },
 
   getSession: () =>
     api.get('/admin/api/session'),

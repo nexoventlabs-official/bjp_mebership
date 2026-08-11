@@ -57,8 +57,18 @@ export const SESSION_COOKIE_OPTS = {
 }
 
 export function requireAdmin(req, res, next) {
-  const cookies = parseCookies(req.headers.cookie)
-  const payload = verifySession(cookies[COOKIE_NAME])
+  // Prefer the Authorization: Bearer token (works cross-domain), fall back to
+  // the session cookie (same-origin setups).
+  let token = null
+  const auth = req.headers.authorization || req.headers.Authorization
+  if (typeof auth === 'string' && auth.startsWith('Bearer ')) {
+    token = auth.slice(7).trim()
+  }
+  if (!token) {
+    const cookies = parseCookies(req.headers.cookie)
+    token = cookies[COOKIE_NAME]
+  }
+  const payload = verifySession(token)
   if (!payload) {
     return res.status(401).json({ success: false, message: 'Not authenticated.' })
   }

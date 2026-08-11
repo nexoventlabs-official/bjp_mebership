@@ -19,8 +19,10 @@ export function postLogin(req, res) {
 
   if (safeEqual(username, expectedUser) && safeEqual(password, expectedPass)) {
     const token = signSession(username)
+    // Set a cookie for same-origin setups AND return the token for cross-domain
+    // (Vercel <-> Render) where third-party cookies are blocked.
     res.cookie(COOKIE_NAME, token, SESSION_COOKIE_OPTS)
-    return res.json({ success: true, message: 'Logged in.' })
+    return res.json({ success: true, token, message: 'Logged in.' })
   }
   return res.status(401).json({ success: false, message: 'Invalid username or password.' })
 }
