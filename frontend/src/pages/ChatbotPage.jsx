@@ -34,6 +34,39 @@ const SHORT_MAX_WORDS = 150
 const URL_RE = /^https?:\/\/[^\s.]+\.[^\s]{2,}$/i
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Shrink a photo in the browser before upload: cap the longest side at 1280px
+// and re-encode as JPEG (~0.8). A multi-MB phone photo becomes a couple hundred
+// KB, so it uploads in about a second. Non-images / errors return the original.
+const compressImage = (file) => new Promise((resolve) => {
+  if (!file || !file.type || !file.type.startsWith('image/')) return resolve(file)
+  try {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const MAX = 1280
+      let { width, height } = img
+      if (width > MAX || height > MAX) {
+        if (width >= height) { height = Math.round((height * MAX) / width); width = MAX }
+        else { width = Math.round((width * MAX) / height); height = MAX }
+      }
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+        canvas.toBlob((blob) => {
+          if (!blob || blob.size >= file.size) return resolve(file)
+          const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg'
+          resolve(new File([blob], name, { type: 'image/jpeg' }))
+        }, 'image/jpeg', 0.8)
+      } catch { resolve(file) }
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file) }
+    img.src = url
+  } catch { resolve(file) }
+})
 const maskMobile = (m) => (m ? m.slice(0, 2) + 'XXXXXX' + m.slice(-2) : '')
 const countWords = (s) => String(s || '').trim().split(/\s+/).filter(Boolean).length
 const fmtTime = (d) => (d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')
@@ -2005,8 +2038,28 @@ export default function ChatbotPage() {
   const initializedRef = useRef(false)
   const mobileRef = useRef('')
   const appDataRef = useRef(appData)
+  // Background media uploads keyed by kind ('photo' | 'video' | 'doc').
+  // Each entry: { file, promise } where promise resolves to the stored URL.
+  // Uploads start the moment a file is picked, so submit is near-instant.
+  const uploadsRef = useRef({})
 
   useEffect(() => { appDataRef.current = appData }, [appData])
+
+  // Kick off a media upload in the background and remember its promise. Photos
+  // are compressed first. Rejections are caught here and re-surfaced at submit.
+  const startBackgroundUpload = useCallback((kind, file) => {
+    if (!file) { uploadsRef.current[kind] = null; return }
+    const promise = (async () => {
+      const toSend = kind === 'photo' ? await compressImage(file) : file
+      const fd = new FormData()
+      fd.append('file', toSend)
+      fd.append('mobile', mobileRef.current || 'general')
+      const res = await chat.uploadMedia(fd)
+      return res?.url || ''
+    })()
+    promise.catch(() => {}) // avoid unhandled rejection; awaited again at submit
+    uploadsRef.current[kind] = { file, promise }
+  }, [])
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isTyping])
   useEffect(() => () => { if (otpTimerRef.current) clearInterval(otpTimerRef.current) }, [])
 
@@ -2284,6 +2337,7 @@ export default function ChatbotPage() {
 
   const handlePhotoSubmit = async ({ photoFile, photoUrl }) => {
     patchData({ photoFile, photoUrl })
+    startBackgroundUpload('photo', photoFile) // upload now, in the background
     addMsg('user', 'text', { text: photoUrl ? t('Passport photo ready ✓') : t('Skipped') })
     await botSay(t('Great! Now, choose your Local Body type and fill in your area details.'), 350)
     addMsg('bot', 'local_body', {})
@@ -2325,6 +2379,7 @@ export default function ChatbotPage() {
 
   const handleVideoSubmit = async ({ videoUrl, videoFile, videoFileName }) => {
     patchData({ videoUrl, videoFile, videoFileName })
+    startBackgroundUpload('video', videoFile) // upload now, in the background
     const hasVideo = videoUrl || videoFile
     addMsg('user', 'text', { text: hasVideo ? t('Pitch video ready ✓') : t('Skipped') })
     await botSay(t('Tell us about your Work / Experience (maximum 500 words).'), 350)
@@ -2359,6 +2414,7 @@ export default function ChatbotPage() {
 
   const handleDocUploadSubmit = async ({ docFile, docFileName }) => {
     patchData({ docFile, docFileName })
+    startBackgroundUpload('doc', docFile) // upload now, in the background
     addMsg('user', 'text', { text: docFile ? t('Supporting document ready ✓') : t('Skipped') })
     await botSay(t('Almost done! Please review all your details before submitting.'), 400)
     addMsg('bot', 'review', {})
@@ -2373,55 +2429,28 @@ export default function ChatbotPage() {
     addMsg('user', 'text', { text: t('✓ Confirm & Submit') })
     setIsTyping(true)
     try {
-      let finalPhotoUrl = d.photoUrl || ''
-      let finalVideoUrl = d.videoUrl || ''
-      let finalDocUrl = d.documentUrl || ''
       const uploadFailures = []
 
-      // 1. Upload photo on final submit
-      if (d.photoFile) {
-        await botSay(t('📤 Uploading your photo...'), 150)
-        try {
-          const fd = new FormData()
-          fd.append('file', d.photoFile)
-          fd.append('mobile', mobileRef.current || 'general')
-          const photoRes = await chat.uploadMedia(fd)
-          if (photoRes?.url) finalPhotoUrl = photoRes.url
-        } catch (err) {
-          console.error('[Photo Upload Error]', err)
-          uploadFailures.push(t('photo'))
-        }
+      // Media started uploading in the background the moment each file was
+      // picked, so by now they are usually finished. Await those promises in
+      // parallel (fall back to uploading here if one was never started). Note:
+      // d.photoUrl is only a local preview — never send it as the stored URL.
+      const resolveUpload = async (kind, file, externalUrl) => {
+        if (!file) return externalUrl || ''
+        let entry = uploadsRef.current[kind]
+        if (!entry || entry.file !== file) { startBackgroundUpload(kind, file); entry = uploadsRef.current[kind] }
+        try { return (await entry.promise) || '' }
+        catch (err) { console.error(`[${kind} upload error]`, err); uploadFailures.push(t(kind)); return '' }
       }
 
-      // 2. Upload pitch video on final submit
-      if (d.videoFile) {
-        await botSay(t('🎥 Uploading your video — this can take a minute on mobile...'), 150)
-        try {
-          const fd = new FormData()
-          fd.append('file', d.videoFile)
-          fd.append('mobile', mobileRef.current || 'general')
-          const videoRes = await chat.uploadMedia(fd)
-          if (videoRes?.url) finalVideoUrl = videoRes.url
-        } catch (err) {
-          console.error('[Video Upload Error]', err)
-          uploadFailures.push(t('video'))
-        }
-      }
+      const anyPending = d.photoFile || d.videoFile || d.docFile
+      if (anyPending) await botSay(t('📤 Finalising your uploads...'), 150)
 
-      // 3. Upload PDF/DOCX document on final submit
-      if (d.docFile) {
-        await botSay(t('📄 Uploading your document...'), 150)
-        try {
-          const fd = new FormData()
-          fd.append('file', d.docFile)
-          fd.append('mobile', mobileRef.current || 'general')
-          const docRes = await chat.uploadMedia(fd)
-          if (docRes?.url) finalDocUrl = docRes.url
-        } catch (err) {
-          console.error('[Doc Upload Error]', err)
-          uploadFailures.push(t('document'))
-        }
-      }
+      const [finalPhotoUrl, finalVideoUrl, finalDocUrl] = await Promise.all([
+        resolveUpload('photo', d.photoFile, ''),
+        resolveUpload('video', d.videoFile, d.videoUrl),
+        resolveUpload('doc', d.docFile, d.documentUrl),
+      ])
 
       await botSay(t('📝 Submitting your application...'), 150)
 
