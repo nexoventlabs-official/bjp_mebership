@@ -327,34 +327,16 @@ const PREF_LABELS = ['1st Preference', '2nd Preference', '3rd Preference']
 function PositionMsg({ active, bodyType, initial, onSubmit, disabled }) {
   const { t } = useLang()
   const options = positionsFor(bodyType)
-  // Each preference: { enabled, value }. 1st is always enabled/required.
-  const [prefs, setPrefs] = useState(() => [0, 1, 2].map((i) => ({
-    enabled: i === 0 ? true : !!(initial && initial[i]),
-    value: (initial && initial[i]) || '',
-  })))
+  // 1st preference is a required dropdown; 2nd & 3rd are optional free text.
+  const [pref1, setPref1] = useState((initial && initial[0]) || '')
+  const [pref2, setPref2] = useState((initial && initial[1]) || '')
+  const [pref3, setPref3] = useState((initial && initial[2]) || '')
 
-  const setValue = (idx, value) => setPrefs((prev) => {
-    const next = prev.map((p) => ({ ...p })); next[idx].value = value; return next
-  })
-  const toggle = (idx) => {
-    if (idx === 0) return // 1st always required
-    setPrefs((prev) => {
-      const next = prev.map((p) => ({ ...p }))
-      next[idx].enabled = !next[idx].enabled
-      if (!next[idx].enabled) next[idx].value = ''
-      return next
-    })
-  }
-
-  // Options available for a row = not already chosen by another enabled row.
-  const availableFor = (idx) => options.filter((o) => !prefs.some((p, i) => i !== idx && p.enabled && p.value === o))
-
-  // Ready when every enabled preference has a position chosen (1st mandatory).
-  const ready = prefs[0].value && prefs.every((p) => !p.enabled || p.value)
+  const ready = !!pref1
 
   const handleContinue = () => {
     if (!ready) return
-    const chosen = prefs.filter((p) => p.enabled && p.value).map((p) => p.value)
+    const chosen = [pref1, pref2.trim(), pref3.trim()].filter(Boolean)
     onSubmit(chosen)
   }
 
@@ -362,41 +344,30 @@ function PositionMsg({ active, bodyType, initial, onSubmit, disabled }) {
     <div style={cardBox}>
       <div style={cardTitle}><i className="bi bi-trophy-fill" /> {t('Position to Contest')}</div>
       <div style={{ fontSize: 12, color: 'var(--color-ash)' }}>
-        {t('Tick the preferences you want and choose a position for each. 1st preference is required.')}
+        {t('Choose your 1st preference. 2nd and 3rd preferences are optional.')}
       </div>
 
-      {prefs.map((p, idx) => {
-        const required = idx === 0
-        return (
-          <div key={idx} style={{
-            border: `1px solid ${p.enabled ? 'var(--color-signal-mint)' : 'var(--color-graphite)'}`,
-            borderRadius: 10, padding: '10px 12px',
-            background: p.enabled ? 'rgba(46,204,113,0.06)' : 'var(--color-abyss)',
-            opacity: p.enabled ? 1 : 0.85,
-          }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: required || !active ? 'default' : 'pointer', marginBottom: p.enabled ? 8 : 0 }}>
-              <input
-                type="checkbox"
-                checked={p.enabled}
-                disabled={required || !active}
-                onChange={() => toggle(idx)}
-                style={{ width: 16, height: 16, accentColor: 'var(--color-signal-mint)', cursor: required || !active ? 'default' : 'pointer' }}
-              />
-              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-chalk)' }}>
-                {t(PREF_LABELS[idx])}{required && <span style={{ color: '#e74c3c' }}> *</span>}
-                {!required && <span style={{ color: 'var(--color-ash)', fontWeight: 400 }}> ({t('optional')})</span>}
-              </span>
-            </label>
-            {p.enabled && (
-              <select style={controlStyle} value={p.value} disabled={!active}
-                onChange={(e) => setValue(idx, e.target.value)}>
-                <option value="">{t('Select a position')}</option>
-                {availableFor(idx).map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            )}
-          </div>
-        )
-      })}
+      <div>
+        <span style={fieldLabel}>{t('1st Preference')}<span style={{ color: '#e74c3c' }}> *</span></span>
+        <select style={controlStyle} value={pref1} disabled={!active} onChange={(e) => setPref1(e.target.value)}>
+          <option value="">{t('Select a position')}</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <span style={fieldLabel}>{t('2nd Preference')} <span style={{ color: 'var(--color-ash)', fontWeight: 400 }}>({t('optional')})</span></span>
+        <input style={controlStyle} type="text" value={pref2} disabled={!active}
+          placeholder={t('Type your 2nd preference (optional)')}
+          onChange={(e) => setPref2(e.target.value)} />
+      </div>
+
+      <div>
+        <span style={fieldLabel}>{t('3rd Preference')} <span style={{ color: 'var(--color-ash)', fontWeight: 400 }}>({t('optional')})</span></span>
+        <input style={controlStyle} type="text" value={pref3} disabled={!active}
+          placeholder={t('Type your 3rd preference (optional)')}
+          onChange={(e) => setPref3(e.target.value)} />
+      </div>
 
       {active && (
         <button style={primaryBtn(ready && !disabled)} disabled={!ready || disabled} onClick={handleContinue}>
@@ -422,20 +393,20 @@ function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
   const set = (k, v) => setVals((prev) => ({ ...prev, [k]: v }))
 
   const handleContinue = () => {
+    // Social media is optional — only validate the ones actually entered.
     const filled = SOCIALS.map((s) => [s.key, (vals[s.key] || '').trim()]).filter(([, v]) => v)
-    if (!filled.length) { setError(t('Please add at least one social media URL.')); return }
     for (const [k, v] of filled) {
       if (!URL_RE.test(v)) { setError(t('Please enter a valid URL for {field}.', { field: k })); return }
     }
     setError('')
-    onSubmit(Object.fromEntries(filled))
+    onSubmit(Object.fromEntries(filled)) // may be empty — social media is optional
   }
 
   return (
     <div style={cardBox}>
       <div style={cardTitle}><i className="bi bi-share-fill" /> {t('Add Your Social Media')}</div>
       <div style={{ fontSize: 12, color: 'var(--color-ash)' }}>
-        {t('Add at least one valid social media profile URL.')}
+        {t('Add your social media profiles (optional). You can skip and continue.')}
       </div>
       {SOCIALS.map((s) => (
         <div key={s.key}>
@@ -526,7 +497,6 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
     if (!draft.bodyType || !localBodyComplete(draft.bodyType, draft.localBody)) { setError(t('Please complete all local body fields.')); return }
     if (!draft.positionPrefs[0]) { setError(t('1st preference position is required.')); return }
     const filledSocial = Object.entries(draft.social).map(([k, val]) => [k, (val || '').trim()]).filter(([, val]) => val)
-    if (!filledSocial.length) { setError(t('Add at least one social media URL.')); return }
     for (const [k, val] of filledSocial) {
       if (!URL_RE.test(val)) { setError(t('Invalid URL for {field}.', { field: k })); return }
     }
@@ -625,12 +595,16 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
               </>
             )}
 
-            {[0, 1, 2].map((idx) => (
-              <select key={idx} style={controlStyle} value={draft.positionPrefs[idx]} onChange={(e) => setPref(idx, e.target.value)}>
-                <option value="">{t(['1st Preference *', '2nd Preference (optional)', '3rd Preference (optional)'][idx])}</option>
-                {availableFor(idx).map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-            ))}
+            <select style={controlStyle} value={draft.positionPrefs[0]} onChange={(e) => setPref(0, e.target.value)}>
+              <option value="">{t('1st Preference *')}</option>
+              {options.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <input style={controlStyle} type="text" value={draft.positionPrefs[1] || ''}
+              placeholder={t('2nd Preference (optional)')}
+              onChange={(e) => setPref(1, e.target.value)} />
+            <input style={controlStyle} type="text" value={draft.positionPrefs[2] || ''}
+              placeholder={t('3rd Preference (optional)')}
+              onChange={(e) => setPref(2, e.target.value)} />
           </div>
         )}
       </ReviewSection>

@@ -134,17 +134,16 @@ export async function postSubmitApplication(req, res) {
     localBody = { type: 'rural', panchayat_union: panchayatUnion, village_panchayat: villagePanchayat, ward }
   }
 
-  // Position preferences (1st required, 2nd/3rd optional). Must be valid for body type.
+  // Position preferences: 1st is required and must be a valid position for the
+  // body type. 2nd and 3rd are optional free-text entries.
   const validPositions = positionsFor(bodyType)
   const prefsIn = Array.isArray(body.position_preferences) ? body.position_preferences : []
   const prefs = prefsIn.map((p) => String(p || '').trim()).filter(Boolean)
   if (!prefs.length) {
     return res.status(400).json({ success: false, message: 'Select at least your 1st preference position.' })
   }
-  for (const p of prefs) {
-    if (!validPositions.includes(p)) {
-      return res.status(400).json({ success: false, message: `Invalid position for ${bodyType} local body: ${p}` })
-    }
+  if (!validPositions.includes(prefs[0])) {
+    return res.status(400).json({ success: false, message: `Invalid 1st preference position for ${bodyType} local body.` })
   }
 
   // Social media — at least one valid URL required
@@ -159,9 +158,7 @@ export async function postSubmitApplication(req, res) {
       social[key] = v
     }
   }
-  if (!Object.keys(social).length) {
-    return res.status(400).json({ success: false, message: 'Please add at least one valid social media URL.' })
-  }
+  // Social media is optional — no minimum required. Any entered URLs are validated above.
 
   const workExperience = String(body.work_experience || '').trim()
   if (!workExperience) {
