@@ -1,8 +1,9 @@
 import { sendOtp, verifyOtp, normalizeMobile, isValidMobile, devBypassEnabled } from '../services/otpService.js'
 import { findVoterByEpic, toVoterProfile, isValidEpic, normalizeEpic } from '../models/voterModel.js'
 import { createApplication, findApplicationById, findLatestApplicationByMobile } from '../models/applicationModel.js'
-import { isVoterDbOnline, isAppDbOnline } from '../config/db.js'
+import { isVoterDbOnline, isAppDbOnline, getAppDb } from '../config/db.js'
 import { positionsFor, URBAN_BODY_TYPES } from '../constants/localBodies.js'
+import { uploadMedia, b2Configured } from '../services/b2Service.js'
 
 // ── OTP ────────────────────────────────────────────────────────────
 export async function postSendOtp(req, res) {
@@ -191,6 +192,12 @@ export async function postSubmitApplication(req, res) {
       social_media: social,
       work_experience: workExperience,
       local_area_understanding: localAreaUnderstanding,
+      // Optional media + extra details (Backblaze URLs / free text)
+      photo_url: String(body.photo_url || '').trim(),
+      video_url: String(body.video_url || '').trim(),
+      document_url: String(body.document_url || '').trim(),
+      development_priorities: String(body.development_priorities || '').trim(),
+      grievance_plan: String(body.grievance_plan || '').trim(),
     })
     return res.json({
       success: true,
@@ -211,4 +218,73 @@ export async function getApplication(req, res) {
   const app = await findApplicationById(req.params.id)
   if (!app) return res.status(404).json({ success: false, message: 'Application not found.' })
   return res.json({ success: true, application: app })
+}
+
+// ── Media upload (Backblaze B2) ────────────────────────────────────
+// Accepts a single multipart file field named "file". Images are optimised
+// with sharp inside the service. Returns the public URL of the stored object.
+export async function postUploadMedia(req, res) {
+  if (!b2Configured()) {
+    return res.status(503).json({ success: false, message: 'Media upload is temporarily unavailable.' })
+  }
+  const file = req.file
+  if (!file || !file.buffer || !file.buffer.length) {
+    return res.status(400).json({ success: false, message: 'No file received.' })
+  }
+  // Group uploads by mobile number when available, else a shared folder.
+  const mobile = String(req.body?.mobile || '').replace(/\D/g, '').slice(-10) || 'general'
+  try {
+    const result = await uploadMedia({
+      buffer: file.buffer,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      folder: `bjp-localbody/${mobile}`,
+    })
+    return res.json({ success: true, url: result.url, key: result.key, bytes: result.bytes })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Could not upload the file. Please try again.' })
+  }
+}
+
+// ── Organiser message ──────────────────────────────────────────────
+// A one-time free-text message an applicant can send after submitting.
+// Stored once per application_id (subsequent attempts are rejected).
+export async function postOrganiserMessage(req, res) {
+  if (!isAppDbOnline()) {
+    return res.status(503).json({ success: false, message: 'Service is temporarily unavailable. Please try again shortly.' })
+  }
+  const body = req.body || {}
+  const mobile = normalizeMobile(body.mobile)
+  const applicationId = String(body.application_id || '').trim()
+  const message = String(body.message || '').trim()
+
+  if (!isValidMobile(mobile)) {
+    return res.status(400).json({ success: false, message: 'A valid mobile number is required.' })
+  }
+  if (!applicationId) {
+    return res.status(400).json({ success: false, message: 'Application reference is required.' })
+  }
+  if (!message) {
+    return res.status(400).json({ success: false, message: 'Please enter a message.' })
+  }
+  if (countWords(message) > 500) {
+    return res.status(400).json({ success: false, message: 'Message must be 500 words or fewer.' })
+  }
+
+  try {
+    const col = getAppDb().collection('organiser_messages')
+    const existing = await col.findOne({ application_id: applicationId })
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'A message has already been sent for this application.' })
+    }
+    await col.insertOne({
+      mobile,
+      application_id: applicationId,
+      message,
+      created_at: new Date(),
+    })
+    return res.json({ success: true, message: 'Your message has been sent.' })
+  } catch (e) {
+    return res.status(500).json({ success: false, message: 'Could not send your message. Please try again.' })
+  }
 }

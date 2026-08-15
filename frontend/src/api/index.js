@@ -65,7 +65,20 @@ export const chat = {
 
   getApplication: (applicationId) =>
     api.get(`/api/application/${applicationId}`),
+
+  sendOrganiserMessage: (data) =>
+    api.post('/api/organiser-message', data),
+
+  uploadMedia: (formData) =>
+    api.post('/api/upload/media', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 }
+
+export const getApplication = (applicationId) =>
+  api.get(`/api/application/${applicationId}`)
+
+
 
 // ── Admin console API (username/password + bearer token) ──────────
 export const admin = {

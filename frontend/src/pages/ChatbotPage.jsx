@@ -3,6 +3,9 @@ import { chat } from '../api'
 import '../styles/chatbot.css'
 import { useLang } from '../i18n/LanguageContext'
 import { positionsFor, URBAN_BODY_TYPES, bodiesForType } from '../data/localBodies.js'
+import html2canvas from 'html2canvas'
+import QRCode from 'qrcode'
+
 
 // ── Flow states ────────────────────────────────────────────
 const S = {
@@ -12,17 +15,22 @@ const S = {
   AWAIT_MEMBERSHIP: 'AWAIT_MEMBERSHIP',
   AWAIT_EPIC:       'AWAIT_EPIC',
   CONFIRM_VOTER:    'CONFIRM_VOTER',
+  PHOTO_UPLOAD:     'PHOTO_UPLOAD',
   LOCAL_BODY:       'LOCAL_BODY',
   POSITION:         'POSITION',
   SOCIAL:           'SOCIAL',
+  VIDEO_UPLOAD:     'VIDEO_UPLOAD',
   WORK:             'WORK',
   LOCAL_AREA:       'LOCAL_AREA',
+  SHORT_TEXTS:      'SHORT_TEXTS',
+  DOC_UPLOAD:       'DOC_UPLOAD',
   REVIEW:           'REVIEW',
   SUBMITTING:       'SUBMITTING',
   SUBMITTED:        'SUBMITTED',
 }
 
 const MAX_WORDS = 500
+const SHORT_MAX_WORDS = 150
 const URL_RE = /^https?:\/\/[^\s.]+\.[^\s]{2,}$/i
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -39,6 +47,8 @@ const emptyLocalBody = () => ({
 
 const emptyAppData = () => ({
   membershipId: '',
+  photoUrl: '',
+  videoUrl: '',
   epic: '',
   voter: null,
   bodyType: '',
@@ -47,7 +57,11 @@ const emptyAppData = () => ({
   social: { facebook: '', instagram: '', twitter: '', youtube: '' },
   workExperience: '',
   localArea: '',
+  devPriorities: '',
+  grievancePlan: '',
+  documentUrl: '',
 })
+
 
 // ── Session persistence (survive page refresh) + inactivity logout ──
 const STORAGE_KEY = 'bjp_lb_session'
@@ -204,17 +218,190 @@ const controlStyle = {
   border: '1px solid var(--color-graphite)', fontSize: 14, boxSizing: 'border-box',
 }
 const primaryBtn = (enabled) => ({
-  width: '100%', padding: '12px 16px', marginTop: 4,
-  background: enabled ? 'var(--color-signal-mint)' : 'rgba(46,204,113,0.25)',
-  color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+  flex: 1,
+  width: '100%', padding: '11px 14px', marginTop: 4,
+  background: enabled ? 'linear-gradient(135deg, #FF6600 0%, #E65C00 100%)' : '#FFC299',
+  color: '#FFFFFF', border: 'none', borderRadius: 10, fontSize: 13.5, fontWeight: 700,
   cursor: enabled ? 'pointer' : 'not-allowed',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  boxShadow: enabled ? '0 4px 14px rgba(255, 102, 0, 0.35)' : 'none',
+  transition: 'all 0.2s ease',
+  whiteSpace: 'normal',
+  lineHeight: 1.35,
+  textAlign: 'center',
+  boxSizing: 'border-box',
+  minWidth: 0,
 })
+
+const secondaryBtn = (enabled = true) => ({
+  flex: 1,
+  width: '100%', padding: '11px 14px', marginTop: 4,
+  background: '#F3F4F6',
+  color: '#1F2937',
+  border: '1.5px solid #D1D5DB', borderRadius: 10, fontSize: 13.5, fontWeight: 700,
+  cursor: enabled ? 'pointer' : 'not-allowed',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+  transition: 'all 0.2s ease',
+  whiteSpace: 'normal',
+  lineHeight: 1.35,
+  textAlign: 'center',
+  boxSizing: 'border-box',
+  minWidth: 0,
+})
+
+
+
 const cardBox = {
   width: '100%', background: 'var(--color-carbon)', border: '1px solid var(--color-graphite)',
   borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 14,
 }
 const cardTitle = { fontSize: 13, fontWeight: 700, color: 'var(--color-chalk)', display: 'flex', alignItems: 'center', gap: 8 }
+
+// ── BJP Membership Card (Optional + Online Apply Link) ──────
+function MembershipCardMsg({ active, onSubmit, disabled }) {
+  const { t } = useLang()
+  const [val, setVal] = useState('')
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}><i className="bi bi-card-heading text-saffron" /> {t('BJP Membership ID (Optional)')}</div>
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+        {t('Enter your BJP Membership ID if you are already a registered member.')}
+      </div>
+
+      <div style={{ background: 'var(--color-abyss)', padding: 12, borderRadius: 10, border: '1px solid var(--color-graphite)' }}>
+        <a
+          href="https://membership.bjp.org/"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: 13, color: 'var(--color-signal-mint)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          <i className="bi bi-box-arrow-up-right" />
+          {t("Aren't a BJP member? Click here to join BJP Membership")}
+        </a>
+      </div>
+
+      {active && (
+        <>
+          <input
+            style={controlStyle}
+            type="text"
+            value={val}
+            placeholder={t('Enter BJP Membership ID (Optional)')}
+            onChange={(e) => setVal(e.target.value)}
+          />
+
+          <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+
+            <button
+              style={secondaryBtn(!disabled)}
+              onClick={() => onSubmit('', true)}
+              disabled={disabled}
+            >
+              {t('Skip & Proceed')} <i className="bi bi-arrow-right" />
+            </button>
+            {val.trim() && (
+              <button
+                style={primaryBtn(true)}
+                onClick={() => onSubmit(val.trim(), false)}
+                disabled={disabled}
+              >
+                {t('Continue')} <i className="bi bi-arrow-right" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Candidate Passport Size Photo Upload (Max 15MB) ────────
+function PhotoUploadMsg({ active, initial, onSubmit, disabled }) {
+  const { t } = useLang()
+  const [photoFile, setPhotoFile] = useState(null)
+  const [preview, setPreview] = useState(initial?.photoUrl || '')
+  const [error, setError] = useState('')
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setError(t('Please select a valid image file (JPG, PNG, WebP).'))
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setError(t('File size exceeds 15 MB limit. Please select a smaller photo.'))
+      return
+    }
+    setPhotoFile(file)
+    setError('')
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setPreview(reader.result)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleContinue = () => {
+    if (!preview && !photoFile) return
+    onSubmit({ photoFile, photoUrl: preview })
+  }
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}>
+        <i className="bi bi-person-bounding-box text-saffron" />
+        {t('Candidate Passport Size Photo (Max 15 MB)')}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+        {t('Upload a clear, formal passport size candidate profile photo (max 15 MB).')}
+      </div>
+
+      {preview && (
+        <div style={{ textAlign: 'center', margin: '8px 0' }}>
+          <img
+            src={preview}
+            alt="Candidate Passport Preview"
+            style={{ width: 110, height: 130, borderRadius: 8, objectFit: 'cover', border: '2.5px solid #FF6600', boxShadow: '0 4px 10px rgba(255, 102, 0, 0.25)' }}
+          />
+          <div style={{ background: '#ECFDF5', border: '1px solid #10B981', padding: '4px 12px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#059669', fontWeight: 700, marginTop: 6 }}>
+            <i className="bi bi-check-circle-fill" /> {t('Passport Photo Ready')}
+          </div>
+        </div>
+      )}
+
+      {active && (
+        <input
+          type="file"
+          accept="image/*"
+          disabled={disabled}
+          onChange={handleFile}
+          style={controlStyle}
+        />
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#e74c3c' }}>
+          <i className="bi bi-exclamation-circle" /> {error}
+        </div>
+      )}
+
+      {active && (
+        <button
+          style={primaryBtn(Boolean(preview) && !disabled)}
+          disabled={!preview || disabled}
+          onClick={handleContinue}
+        >
+          {t('Continue')} <i className="bi bi-arrow-right" />
+        </button>
+      )}
+
+
+
+    </div>
+  )
+}
 
 // ── Local Body step (rural/urban + dynamic fields) ─────────
 function LocalBodyMsg({ active, initial, onSubmit, disabled }) {
@@ -393,21 +580,21 @@ function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
   const set = (k, v) => setVals((prev) => ({ ...prev, [k]: v }))
 
   const handleContinue = () => {
-    // Social media is optional — only validate the ones actually entered.
     const filled = SOCIALS.map((s) => [s.key, (vals[s.key] || '').trim()]).filter(([, v]) => v)
     for (const [k, v] of filled) {
       if (!URL_RE.test(v)) { setError(t('Please enter a valid URL for {field}.', { field: k })); return }
     }
     setError('')
-    onSubmit(Object.fromEntries(filled)) // may be empty — social media is optional
+    onSubmit(Object.fromEntries(filled))
   }
 
   return (
     <div style={cardBox}>
-      <div style={cardTitle}><i className="bi bi-share-fill" /> {t('Add Your Social Media')}</div>
+      <div style={cardTitle}><i className="bi bi-share-fill text-saffron" /> {t('Add Your Social Media')} ({t('Optional')})</div>
       <div style={{ fontSize: 12, color: 'var(--color-ash)' }}>
-        {t('Add your social media profiles (optional). You can skip and continue.')}
+        {t('Add your social media profile URLs (Optional).')}
       </div>
+
       {SOCIALS.map((s) => (
         <div key={s.key}>
           <span style={fieldLabel}><i className={`bi bi-${s.icon}`} style={{ marginRight: 6 }} />{t(s.label)}</span>
@@ -425,18 +612,187 @@ function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
   )
 }
 
+// ── Candidate Pitch Video Upload (URL or MP4 file, max 100MB) ──
+function VideoUploadMsg({ active, initial, onSubmit, disabled }) {
+  const { t } = useLang()
+  const [videoUrl, setVideoUrl] = useState(initial?.videoUrl || '')
+  const [videoFile, setVideoFile] = useState(initial?.videoFile || null)
+  const [fileName, setFileName] = useState(initial?.videoFileName || '')
+  const [error, setError] = useState('')
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 100 * 1024 * 1024) {
+      setError(t('Video size exceeds 100 MB limit. Please select a smaller video.'))
+      return
+    }
+    setVideoFile(file)
+    setFileName(file.name)
+    setError('')
+  }
+
+  const handleContinue = () => {
+    const finalUrl = videoUrl.trim()
+    if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      setError(t('Please enter a valid video link (starting with https://).'))
+      return
+    }
+    setError('')
+    onSubmit({ videoUrl: finalUrl, videoFile, videoFileName: fileName })
+  }
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}>
+        <i className="bi bi-camera-video-fill text-saffron" />
+        {t('Candidate Pitch Video (1 Min / Max 100 MB)')} ({t('Optional')})
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+        {t('Provide your 1-minute candidate pitch video. You can paste a video link (YouTube, Instagram Reels, Google Drive) OR upload an MP4 file (Max 100 MB).')}
+      </div>
+
+      <div>
+        <span style={fieldLabel}><i className="bi bi-link-45deg me-1" />{t('Option A: Paste Video Link')}</span>
+        <input
+          style={controlStyle}
+          type="url"
+          value={videoUrl}
+          disabled={!active}
+          placeholder="https://youtube.com/shorts/... or https://instagram.com/reel/..."
+          onChange={(e) => { setVideoUrl(e.target.value); if (error) setError('') }}
+        />
+      </div>
+
+      {active && (
+        <div>
+          <span style={fieldLabel}><i className="bi bi-cloud-arrow-up-fill me-1" />{t('Option B: Or Upload MP4 Video File (Max 100 MB)')}</span>
+          <input
+            type="file"
+            accept="video/mp4,video/x-m4v,video/*"
+            disabled={disabled}
+            onChange={handleFileUpload}
+            style={controlStyle}
+          />
+        </div>
+      )}
+
+      {fileName && (
+        <div style={{ fontSize: 12, color: 'var(--color-chalk)', background: 'var(--color-abyss)', padding: 10, borderRadius: 8, border: '1px solid #FF6600', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i className="bi bi-file-earmark-play-fill text-saffron" style={{ fontSize: 18 }} />
+          <div>
+            <div style={{ fontWeight: 600 }}>{fileName}</div>
+            <div style={{ fontSize: 11, color: '#10B981' }}>{t('Pitch Video File Ready (Will upload on submit)')}</div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#e74c3c' }}>
+          <i className="bi bi-exclamation-circle" /> {error}
+        </div>
+      )}
+
+      {active && (
+        <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+
+          <button
+            style={secondaryBtn(!disabled)}
+            onClick={() => onSubmit({ videoUrl: '', videoFile: null, videoFileName: '' })}
+            disabled={disabled}
+          >
+            {t('Skip')}
+          </button>
+
+          <button
+            style={primaryBtn(!disabled)}
+            disabled={disabled}
+            onClick={handleContinue}
+          >
+            {t('Continue')} <i className="bi bi-arrow-right" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
 // ── Long text step (work / experience, local area) ─────────
-function LongTextMsg({ active, title, icon, prompt, initial, onSubmit, disabled }) {
+function LongTextMsg({ active, title, icon, prompt, expectText, initial, onSubmit, disabled }) {
   const { t } = useLang()
   const [text, setText] = useState(initial || '')
+  const [showInfo, setShowInfo] = useState(false)
   const words = countWords(text)
   const over = words > MAX_WORDS
   const ready = words > 0 && !over
 
   return (
     <div style={cardBox}>
-      <div style={cardTitle}><i className={`bi bi-${icon}`} /> {t(title)}</div>
-      <div style={{ fontSize: 12, color: 'var(--color-ash)' }}>{t(prompt)}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+        <div style={cardTitle}>
+          <i className={`bi bi-${icon} text-saffron`} /> {t(title)}
+        </div>
+        {expectText && (
+          <button
+            type="button"
+            onClick={() => setShowInfo(!showInfo)}
+            title={t('Click for political guidance')}
+            style={{
+              background: showInfo ? '#FF6600' : '#F3F4F6',
+              color: showInfo ? '#FFFFFF' : '#FF6600',
+              border: '1.5px solid #FF6600',
+              borderRadius: '50%',
+              width: 28,
+              height: 28,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: 14,
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 6px rgba(255, 102, 0, 0.2)',
+            }}
+          >
+            <i className="bi bi-info-circle-fill" />
+          </button>
+        )}
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span>{t(prompt)}</span>
+        {expectText && (
+          <span
+            onClick={() => setShowInfo(!showInfo)}
+            style={{ fontSize: 11, color: '#FF6600', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
+          >
+            {t('(Click ℹ️ for guidance)')}
+          </span>
+        )}
+      </div>
+
+      {showInfo && expectText && (
+        <div style={{
+          background: 'rgba(255, 102, 0, 0.08)',
+          border: '1.5px solid #FF6600',
+          borderRadius: 10,
+          padding: 12,
+          fontSize: 12,
+          color: 'var(--color-chalk)',
+          lineHeight: 1.5,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+        }}>
+          <div style={{ fontWeight: 700, color: '#FF6600', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i className="bi bi-lightbulb-fill" /> {t('What We Expect From Your End')}
+          </div>
+          <div style={{ color: 'var(--color-chalk)', fontSize: 12 }}>{t(expectText)}</div>
+        </div>
+      )}
+
       <textarea value={text} disabled={!active} onChange={(e) => setText(e.target.value)} rows={6}
         placeholder={t('Type here…')}
         style={{ ...controlStyle, resize: 'vertical', lineHeight: 1.5, fontFamily: 'inherit' }} />
@@ -453,7 +809,221 @@ function LongTextMsg({ active, title, icon, prompt, initial, onSubmit, disabled 
   )
 }
 
+// ── Two free-text fields (max 150 words each) ─────────────
+function ShortTextsMsg({ active, initial, onSubmit, disabled }) {
+  const { t } = useLang()
+  const [devP, setDevP] = useState(initial?.devPriorities || '')
+  const [grievP, setGrievP] = useState(initial?.grievancePlan || '')
+  const [showInfo1, setShowInfo1] = useState(false)
+  const [showInfo2, setShowInfo2] = useState(false)
+  const [error, setError] = useState('')
+
+  const words1 = countWords(devP)
+  const words2 = countWords(grievP)
+  const over1 = words1 > SHORT_MAX_WORDS
+  const over2 = words2 > SHORT_MAX_WORDS
+
+  const handleContinue = () => {
+    if (over1 || over2) {
+      setError(t('Each text field must be 150 words or fewer.'))
+      return
+    }
+    setError('')
+    onSubmit({ devPriorities: devP.trim(), grievancePlan: grievP.trim() })
+  }
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}>
+        <i className="bi bi-card-checklist text-saffron" />
+        {t('Additional Ward & Grievance Details (Max 150 Words Each)')} ({t('Optional')})
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+        {t('Fill in your key development priorities and constituent grievance plan (optional, max 150 words each).')}
+      </div>
+
+      {/* Field 1: Development Priorities */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <span style={fieldLabel}>
+            <i className="bi bi-list-stars text-saffron me-1" />
+            {t('1. Key Ward / Panchayat Development Priorities (Max 150 words)')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowInfo1(!showInfo1)}
+            style={{
+              background: showInfo1 ? '#FF6600' : '#F3F4F6', color: showInfo1 ? '#FFFFFF' : '#FF6600',
+              border: '1.5px solid #FF6600', borderRadius: '50%', width: 24, height: 24, flexShrink: 0, marginTop: 2,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 700, fontSize: 12,
+            }}
+          >
+            <i className="bi bi-info-circle-fill" />
+          </button>
+        </div>
+
+        {showInfo1 && (
+          <div style={{ background: 'rgba(255,102,0,0.08)', border: '1.5px solid #FF6600', borderRadius: 8, padding: 10, fontSize: 12, color: 'var(--color-chalk)' }}>
+            <strong style={{ color: '#FF6600' }}>💡 {t('What We Expect From Your End')}:</strong><br />
+            {t('Outline 3 to 5 core infrastructure or civic development goals for your ward (e.g. roads, clean water, youth center, sports facility).')}
+          </div>
+        )}
+
+        <textarea
+          value={devP}
+          disabled={!active}
+          onChange={(e) => { setDevP(e.target.value); if (error) setError('') }}
+          rows={3}
+          placeholder={t('Type key development priorities here...')}
+          style={{ ...controlStyle, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+        />
+        <div style={{ fontSize: 11, color: over1 ? '#e74c3c' : 'var(--color-ash)', textAlign: 'right' }}>
+          {words1} / {SHORT_MAX_WORDS} {t('words')}
+        </div>
+      </div>
+
+      {/* Field 2: Grievance Plan */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+          <span style={fieldLabel}>
+            <i className="bi bi-chat-left-dots-fill text-saffron me-1" />
+            {t('2. Public Grievance Redressal Plan (Max 150 words)')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowInfo2(!showInfo2)}
+            style={{
+              background: showInfo2 ? '#FF6600' : '#F3F4F6', color: showInfo2 ? '#FFFFFF' : '#FF6600',
+              border: '1.5px solid #FF6600', borderRadius: '50%', width: 24, height: 24, flexShrink: 0, marginTop: 2,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontWeight: 700, fontSize: 12,
+            }}
+          >
+            <i className="bi bi-info-circle-fill" />
+          </button>
+        </div>
+
+
+        {showInfo2 && (
+          <div style={{ background: 'rgba(255,102,0,0.08)', border: '1.5px solid #FF6600', borderRadius: 8, padding: 10, fontSize: 12, color: 'var(--color-chalk)' }}>
+            <strong style={{ color: '#FF6600' }}>💡 {t('What We Expect From Your End')}:</strong><br />
+            {t('Describe how you will establish regular constituent outreach, weekly grievance camps, and fast municipal escalation.')}
+          </div>
+        )}
+
+        <textarea
+          value={grievP}
+          disabled={!active}
+          onChange={(e) => { setGrievP(e.target.value); if (error) setError('') }}
+          rows={3}
+          placeholder={t('Type grievance redressal plan here...')}
+          style={{ ...controlStyle, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+        />
+        <div style={{ fontSize: 11, color: over2 ? '#e74c3c' : 'var(--color-ash)', textAlign: 'right' }}>
+          {words2} / {SHORT_MAX_WORDS} {t('words')}
+        </div>
+      </div>
+
+      {error && <div style={{ fontSize: 12, color: '#e74c3c' }}><i className="bi bi-exclamation-circle" /> {error}</div>}
+
+      {active && (
+        <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+          <button style={secondaryBtn(!disabled)} onClick={() => onSubmit({ devPriorities: '', grievancePlan: '' })} disabled={disabled}>
+            {t('Skip')}
+          </button>
+          <button style={primaryBtn(!disabled)} disabled={disabled} onClick={handleContinue}>
+            {t('Continue')} <i className="bi bi-arrow-right" />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Candidate Document Upload (PDF or DOCX, max 15MB) ───────
+function DocUploadMsg({ active, initial, onSubmit, disabled }) {
+
+  const { t } = useLang()
+  const [docFile, setDocFile] = useState(initial?.docFile || null)
+  const [fileName, setFileName] = useState(initial?.docFileName || '')
+  const [error, setError] = useState('')
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const validExts = ['.pdf', '.docx', '.doc']
+    const isDoc = validExts.some((ext) => file.name.toLowerCase().endsWith(ext))
+    if (!isDoc) {
+      setError(t('Please select a valid PDF or DOCX document file.'))
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setError(t('Document file size exceeds 15 MB limit.'))
+      return
+    }
+    setDocFile(file)
+    setFileName(file.name)
+    setError('')
+  }
+
+  const handleContinue = () => {
+    onSubmit({ docFile, docFileName: fileName })
+  }
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}>
+        <i className="bi bi-file-earmark-pdf-fill text-saffron" />
+        {t('Candidate Profile / Vision Document Upload (PDF or DOCX)')} ({t('Optional')})
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+        {t('Upload supporting candidate document, resume, or civic vision paper (PDF or DOCX format, max 15 MB).')}
+      </div>
+
+      {active && (
+        <input
+          type="file"
+          accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          disabled={disabled}
+          onChange={handleFile}
+          style={controlStyle}
+        />
+      )}
+
+      {fileName && (
+        <div style={{ fontSize: 12, color: 'var(--color-chalk)', background: 'var(--color-abyss)', padding: 10, borderRadius: 8, border: '1px solid #FF6600', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <i className="bi bi-file-earmark-check-fill text-saffron" style={{ fontSize: 18 }} />
+          <div>
+            <div style={{ fontWeight: 600 }}>{fileName}</div>
+            <div style={{ fontSize: 11, color: '#10B981' }}>{t('Document Ready (Will upload on submit)')}</div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: '#e74c3c' }}>
+          <i className="bi bi-exclamation-circle" /> {error}
+        </div>
+      )}
+
+      {active && (
+        <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+
+          <button style={secondaryBtn(!disabled)} onClick={() => onSubmit({ docFile: null, docFileName: '' })} disabled={disabled}>
+            {t('Skip')}
+          </button>
+          <button style={primaryBtn(!disabled)} disabled={disabled} onClick={handleContinue}>
+            {t('Continue')} <i className="bi bi-arrow-right" />
+          </button>
+        </div>
+      )}
+
+    </div>
+  )
+}
+
+
 // ── Review + edit ──────────────────────────────────────────
+
 function ReviewSection({ title, icon, children }) {
   return (
     <div style={{ borderTop: '1px solid var(--color-graphite)', paddingTop: 12 }}>
@@ -500,6 +1070,7 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
     for (const [k, val] of filledSocial) {
       if (!URL_RE.test(val)) { setError(t('Invalid URL for {field}.', { field: k })); return }
     }
+
     if (!draft.workExperience.trim() || countWords(draft.workExperience) > MAX_WORDS) { setError(t('Work / experience is required (max 500 words).')); return }
     if (!draft.localArea.trim() || countWords(draft.localArea) > MAX_WORDS) { setError(t('Local area understanding is required (max 500 words).')); return }
     setError('')
@@ -609,8 +1180,18 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
         )}
       </ReviewSection>
 
+      <ReviewSection title={t('Media, Priorities & Documents')} icon="file-earmark-pdf-fill">
+        <KV k={t('Candidate Photo')} v={cur.photoUrl ? t('Uploaded ✓') : t('Not Provided')} />
+        <KV k={t('Pitch Video')} v={cur.videoUrl ? t('Provided ✓') : t('Not Provided')} />
+        <KV k={t('Development Priorities')} v={cur.devPriorities ? cur.devPriorities : t('Not Provided')} />
+        <KV k={t('Grievance Plan')} v={cur.grievancePlan ? cur.grievancePlan : t('Not Provided')} />
+        <KV k={t('Supporting Document (PDF/DOCX)')} v={cur.documentUrl ? t('Uploaded ✓') : t('Not Provided')} />
+      </ReviewSection>
+
+
       {/* Social media — editable */}
       <ReviewSection title={t('Social Media')} icon="share-fill">
+
         {!editing ? (
           SOCIALS.map((s) => <KV key={s.key} k={t(s.label)} v={cur.social[s.key]} />)
         ) : (
@@ -647,58 +1228,764 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
 
       {active && (
         editing ? (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button style={{ ...primaryBtn(true), background: 'var(--color-graphite)' }}
+          <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+            <button style={{ ...secondaryBtn(true), flex: '1 1 110px' }}
               onClick={() => { setDraft(data); setEditing(false); setError('') }}>
               {t('Cancel')}
             </button>
-            <button style={primaryBtn(true)} onClick={saveEdits}>
+            <button style={{ ...primaryBtn(true), flex: '2 1 160px' }} onClick={saveEdits}>
               <i className="bi bi-check-lg" /> {t('Save Changes')}
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button style={{ ...primaryBtn(!disabled), background: 'var(--color-graphite)' }} disabled={disabled}
+          <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
+            <button style={{ ...secondaryBtn(!disabled), flex: '1 1 110px' }} disabled={disabled}
               onClick={() => { setDraft(data); setEditing(true) }}>
               <i className="bi bi-pencil-fill" /> {t('Edit')}
             </button>
-            <button style={primaryBtn(!disabled)} disabled={disabled} onClick={onConfirm}>
+            <button style={{ ...primaryBtn(!disabled), flex: '2 1 160px' }} disabled={disabled} onClick={onConfirm}>
               <i className="bi bi-send-fill" /> {t('Confirm & Submit')}
             </button>
           </div>
         )
       )}
+
     </div>
   )
 }
 
-// ── Submitted confirmation ─────────────────────────────────
-function SubmittedMsg({ result, alreadyApplied }) {
-  const { t } = useLang()
+// ── Submitted confirmation + Organiser Get In Touch (One-time message) ──
+function SubmittedMsg({ result, alreadyApplied, appData }) {
+  const { t, lang } = useLang()
+  const initialSentMsg = result?.organiser_message || null
+  const [sentMsg, setSentMsg] = useState(initialSentMsg)
+  const [orgMsg, setOrgMsg] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [fetchedApp, setFetchedApp] = useState(null)
+  const [showPosterModal, setShowPosterModal] = useState(false)
+  const [showQrScanModal, setShowQrScanModal] = useState(false)
+  const [qrUrl, setQrUrl] = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const posterRef = useRef(null)
+
+  const activeApp = fetchedApp || result || {}
+
+  const candName = activeApp.voter?.name || result?.voter?.name || appData?.voter?.name || 'Candidate'
+  const photoUrl = activeApp.photo_url || activeApp.photoUrl || result?.photo_url || result?.photoUrl || appData?.photoUrl || appData?.photo_url || appData?.photoPreview || activeApp.voter?.photo || result?.voter?.photo || ''
+  const candidateImg = photoUrl && photoUrl.trim() ? photoUrl : 'https://raw.githubusercontent.com/twbs/icons/main/icons/person-circle.svg'
+  const epicNo = activeApp.epic_no || activeApp.voter?.epic_no || result?.epic_no || appData?.epic || result?.voter?.epic_no || ''
+  
+  const bodyType = activeApp.body_type || result?.body_type || appData?.bodyType || ''
+  const lb = activeApp.local_body || result?.local_body || appData?.localBody || {}
+  
+  const getLbSummary = () => {
+    if (typeof lb === 'string') return lb
+    if (bodyType === 'urban' || lb.type === 'urban' || lb.local_body_type) {
+      const type = lb.local_body_type || lb.urbanType || 'Town Panchayat'
+      const body = lb.local_body || lb.urbanBody || ''
+      const ward = lb.ward || lb.urbanWard || ''
+      return [type, body, ward ? `Ward ${ward}` : ''].filter(Boolean).join(' - ')
+    }
+    const union = lb.panchayat_union || lb.ruralUnion || ''
+    const panchayat = lb.village_panchayat || lb.ruralPanchayat || ''
+    const ward = lb.ward || lb.ruralWard || ''
+    return [union, panchayat, ward ? `Ward ${ward}` : ''].filter(Boolean).join(' - ')
+  }
+
+  const lbSummary = getLbSummary() || 'Tamil Nadu Local Body'
+  const posPrefs = activeApp.position_preferences || result?.position_preferences || appData?.positionPrefs || []
+  const firstPos = posPrefs[0] || 'Local Body Candidate'
+
+  const targetAppId = activeApp.application_id || result?.application_id || appData?.applicationId || ''
+
+  const getPublicOrigin = () => {
+    if (typeof window !== 'undefined' && window.location.origin) {
+      const orig = window.location.origin
+      if (!orig.includes('localhost') && !orig.includes('127.0.0.1') && !orig.includes('file:')) {
+        return orig
+      }
+    }
+    return 'https://bjp-membership.vercel.app'
+  }
+
+  const verifyLinkUrl = `${getPublicOrigin()}/verify?app_id=${encodeURIComponent(targetAppId)}&lang=${encodeURIComponent(lang)}`
+
+  useEffect(() => {
+    if (targetAppId) {
+      chat.getApplication(targetAppId)
+        .then((res) => {
+          const app = res?.application || res?.data?.application
+          if (app) setFetchedApp(app)
+        })
+        .catch(() => {})
+
+      QRCode.toDataURL(verifyLinkUrl, { margin: 1, width: 140, color: { dark: '#0F172A', light: '#FFFFFF' } })
+        .then(setQrUrl)
+        .catch(() => {})
+    }
+  }, [targetAppId, lang, verifyLinkUrl])
+
+  const handleDownloadPoster = async () => {
+    if (!posterRef.current) return
+    setDownloading(true)
+    try {
+      const canvas = await html2canvas(posterRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#f76201',
+      })
+      const image = canvas.toDataURL('image/png')
+      const link = document.createElement('a')
+
+      link.href = image
+      link.download = `BJP_Candidate_Card_${result?.application_id || '2026'}.png`
+      link.click()
+    } catch (err) {
+      console.error('[Download Card Error]', err)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const handleSendOrganiserMsg = async () => {
+    if (!orgMsg.trim()) return
+    setSending(true)
+    setError('')
+    try {
+      const res = await chat.sendOrganiserMessage({
+        mobile: result.mobile,
+        application_id: result.application_id,
+        message: orgMsg.trim(),
+      })
+      setSending(false)
+      if (res?.success) {
+        setSentMsg({
+          text: orgMsg.trim(),
+          sent_at: new Date(),
+        })
+      } else {
+        setError(res?.message || t('Failed to send message to organiser.'))
+      }
+    } catch (err) {
+      setSending(false)
+      setError(err?.message || t('Failed to send message to organiser.'))
+    }
+  }
+
   return (
-    <div style={{ ...cardBox, alignItems: 'center', textAlign: 'center' }}>
-      <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(46,204,113,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <i className="bi bi-check-circle-fill" style={{ fontSize: 34, color: 'var(--color-signal-mint)' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      
+      {/* Application Submitted & Candidate Application Card Box */}
+      <div style={{ ...cardBox, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        
+        {/* Submitted Status Header */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 6 }}>
+          <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(46,204,113,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <i className="bi bi-check-circle-fill" style={{ fontSize: 30, color: 'var(--color-signal-mint)' }} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-chalk)' }}>
+            {alreadyApplied ? t('Application Already Submitted') : t('Application Submitted')}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.5 }}>
+            {alreadyApplied
+              ? t('You have already submitted an application with this mobile number. It is being reviewed by the Organisation.')
+              : t('Your application will be reviewed by the Organisation. You will be contacted on your registered mobile number.')}
+          </div>
+        </div>
+        {/* Card Header & Language Toggle Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 320, margin: '0 auto -6px auto' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-ash)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <i className="bi bi-translate" /> Card Language / மொழி:
+          </span>
+          <div style={{ display: 'flex', background: 'rgba(255,255,255,0.08)', borderRadius: 16, padding: 2, border: '1px solid rgba(255,255,255,0.15)' }}>
+            <button
+              type="button"
+              onClick={() => setLang('en')}
+              style={{
+                background: lang === 'en' ? '#f76201' : 'transparent',
+                color: '#FFF', border: 'none', borderRadius: 12, padding: '3px 10px',
+                fontSize: 11, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              onClick={() => setLang('ta')}
+              style={{
+                background: lang === 'ta' ? '#f76201' : 'transparent',
+                color: '#FFF', border: 'none', borderRadius: 12, padding: '3px 10px',
+                fontSize: 11, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              தமிழ்
+            </button>
+          </div>
+        </div>
+
+        {/* 9:16 Portrait Candidate Application Poster Card (BJP Saffron #f76201 Theme) */}
+        <div className="bjp-poster-916-card" style={{
+          width: '100%',
+          maxWidth: 320,
+          margin: '0 auto',
+          aspectRatio: '9 / 16',
+          background: 'linear-gradient(165deg, #f76201 0%, #d85400 100%)',
+          border: '3px solid #f76201',
+          borderRadius: 20,
+          boxShadow: '0 12px 36px rgba(247, 98, 1, 0.35)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '14px 12px',
+          boxSizing: 'border-box',
+          position: 'relative',
+          overflow: 'hidden',
+          color: '#FFFFFF',
+        }}>
+          {/* Top Tricolor Accent Line */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: 5,
+            background: 'linear-gradient(90deg, #FFFFFF 0%, #FFFFFF 50%, #00A650 50%, #00A650 100%)',
+            zIndex: 10
+          }} />
+
+          {/* Watermark Lotus Background */}
+          <div style={{ position: 'absolute', top: '45%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.08, pointerEvents: 'none' }}>
+            <svg viewBox="0 0 141 151" width="220" height="220">
+              <path fill="#FFFFFF" d="m19.4 88.3c-1.1-1.8-0.9-3.4-0.3-5.1 1.4-3.7 4.2-6.2 7.3-8.3 0.4-0.2 0.7-0.5 0.9-0.6-2.1-1.5-4.5-2.8-6.5-4.6-5.1-4.6-7.9-10.6-9.8-17-1.8-5.9-2.4-12.1-2.4-18.2 0-7.7-1.7-15.1-5.3-21.9-1.1-2-2.4-3.9-3.7-5.9 1.4-1.3 3.2-1.5 5-1.5 5.7-0.1 10.9 1.6 15.8 4.4 5.1 3 9.2 7 12.6 11.7 0.2 0.3 0.5 0.6 0.8 1 2.3-7.3-1.5-12.6-5.3-18 2-1.2 4.1-0.9 6.1-0.6 7.6 1.1 13.7 5 18.7 10.6 1.9 2.1 3.4 4.5 5 6.8 0.3 0.3 0.5 0.7 0.5 0.8 4.3-7.2 8.5-14.4 13-22 4.8 6.1 7.8 12.6 10.8 18.9 2.4-2.7 4.8-5.5 7.4-8 3.8-3.6 8.2-6.3 13.2-7.7 2.7-0.7 4.2-0.7 7 0.3-3.4 6.1-4.8 12.5-3.1 19.3 1.4-1.9 2.7-4 4.3-5.8 5.3-6.2 11.7-10.4 19.9-11.7 2.4-0.4 4.9-0.6 7.2 0.1 0.7 0.2 1.4 0.6 2.3 1-0.4 0.5-0.7 0.8-1 1.1-4.4 5-7.3 10.6-7.5 17.4-0.1 3.8 0.2 7.6 0.5 11.4 0.6 8-0.1 15.7-3.5 23.1-2.4 5.3-5.8 9.9-10.1 13.9-0.1 0.1-0.3 0.3-0.4 0.4-0.1 0.1-0.1 0.1-0.1 0.2 4.2 3.8 8 7.7 6 14.3-0.8-0.5-1.4-0.9-2-1.3-1.6-1.1-3.3-1.3-5.1-0.7-2.9 0.8-5.3 2.5-7.5 4.4-3 2.7-6.4 4.5-10.4 5.2-3.8 0.7-7.6 0.5-11.3-1-0.4-0.2-0.9-0.2-1.3-0.1-6.3 1.4-10.8 7-10.7 13 0.1 6.8-0.3 13.6-2.1 20.2-0.7 2.4-1.7 4.6-2.6 6.9q2.7-0.3 5.7-0.6c0.6-0.1 1.2-0.2 1.8 0 1 0.2 1.3 1 1.1 2-0.2 1.1-1.1 2-1.9 2-2.7-0.1-5.4-0.2-8.1-0.1-1.7 0-1.9-1.4-2.6-2.3-0.7-0.8 0-1.3 0.4-1.9 2-2.9 2.9-6.2 3.3-9.7 0.6-4.9 0.9-9.8 1.2-14.7 0.1-1.5-0.4-2-2.1-2.3 0 0.5-0.1 1-0.1 1.5 0 5.4 0 10.7-1.1 16-0.9 4.1-2.2 7.9-5.3 10.9-3.2 3.1-7.2 4.1-11.5 4-2.1-0.1-4.3-0.3-6.4-0.8-2.1-0.5-2.4-2.2-0.8-3.7 1.6-1.6 3.6-1.9 5.8-1.8 2.9 0.2 5.9 0.5 8.8 0.8 1 0.1 1.5-0.3 2-1.1 3.2-4.7 4.7-10 5.2-15.6 0.3-4.4 0.1-8.8-1.6-13-1.2-2.9-3-5.2-5.8-6.8-1.9-1.1-3.7-2.3-5.6-3.4-0.3-0.2-0.8-0.3-1-0.2-4 1.9-8 1.4-12 0.3-2.8-0.8-5.2-2.2-7.5-3.9-2.5-1.8-5.2-3.2-8.2-3.7-2.1-0.1 4.0 0.4-6 1.7zm37.5 47.4c-1.1 0.1-2.2 0.3-3.2 0.4-1.5 0.1-2.7-0.5-4.2 0-0.2 0.1-0.9 0.3-0.9 0.6 0 0.2 0.2 0.4 0.8 0.6 1.3 0.4 2.2 0.1 5.4 0 1.1 0 1.8-0.5 2.1-1.6z"/>
+            </svg>
+          </div>
+
+          {/* Poster Top Banner Header (Pure White Panel) */}
+          <div style={{
+            background: '#FFFFFF',
+            borderRadius: 14, padding: '7px 10px', textAlign: 'center',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.15)', zIndex: 1
+          }}>
+            <div style={{ width: 34, height: 34, background: '#FFF7ED', borderRadius: '50%', border: '1px solid #FFE4D6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 2, flexShrink: 0 }}>
+              <svg viewBox="0 0 141 151" width="26" height="26">
+                <path fill="#000000" d="m19.4 88.3c-1.1-1.8-0.9-3.4-0.3-5.1 1.4-3.7 4.2-6.2 7.3-8.3 0.4-0.2 0.7-0.5 0.9-0.6-2.1-1.5-4.5-2.8-6.5-4.6-5.1-4.6-7.9-10.6-9.8-17-1.8-5.9-2.4-12.1-2.4-18.2 0-7.7-1.7-15.1-5.3-21.9-1.1-2-2.4-3.9-3.7-5.9 1.4-1.3 3.2-1.5 5-1.5 5.7-0.1 10.9 1.6 15.8 4.4 5.1 3 9.2 7 12.6 11.7 0.2 0.3 0.5 0.6 0.8 1 2.3-7.3-1.5-12.6-5.3-18 2-1.2 4.1-0.9 6.1-0.6 7.6 1.1 13.7 5 18.7 10.6 1.9 2.1 3.4 4.5 5 6.8 0.3 0.3 0.5 0.7 0.5 0.8 4.3-7.2 8.5-14.4 13-22 4.8 6.1 7.8 12.6 10.8 18.9 2.4-2.7 4.8-5.5 7.4-8 3.8-3.6 8.2-6.3 13.2-7.7 2.7-0.7 4.2-0.7 7 0.3-3.4 6.1-4.8 12.5-3.1 19.3 1.4-1.9 2.7-4 4.3-5.8 5.3-6.2 11.7-10.4 19.9-11.7 2.4-0.4 4.9-0.6 7.2 0.1 0.7 0.2 1.4 0.6 2.3 1-0.4 0.5-0.7 0.8-1 1.1-4.4 5-7.3 10.6-7.5 17.4-0.1 3.8 0.2 7.6 0.5 11.4 0.6 8-0.1 15.7-3.5 23.1-2.4 5.3-5.8 9.9-10.1 13.9-0.1 0.1-0.3 0.3-0.4 0.4-0.1 0.1-0.1 0.1-0.1 0.2 4.2 3.8 8 7.7 6 14.3-0.8-0.5-1.4-0.9-2-1.3-1.6-1.1-3.3-1.3-5.1-0.7-2.9 0.8-5.3 2.5-7.5 4.4-3 2.7-6.4 4.5-10.4 5.2-3.8 0.7-7.6 0.5-11.3-1-0.4-0.2-0.9-0.2-1.3-0.1-6.3 1.4-10.8 7-10.7 13 0.1 6.8-0.3 13.6-2.1 20.2-0.7 2.4-1.7 4.6-2.6 6.9q2.7-0.3 5.7-0.6c0.6-0.1 1.2-0.2 1.8 0 1 0.2 1.3 1 1.1 2-0.2 1.1-1.1 2-1.9 2-2.7-0.1-5.4-0.2-8.1-0.1-1.7 0-1.9-1.4-2.6-2.3-0.7-0.8 0-1.3 0.4-1.9 2-2.9 2.9-6.2 3.3-9.7 0.6-4.9 0.9-9.8 1.2-14.7 0.1-1.5-0.4-2-2.1-2.3 0 0.5-0.1 1-0.1 1.5 0 5.4 0 10.7-1.1 16-0.9 4.1-2.2 7.9-5.3 10.9-3.2 3.1-7.2 4.1-11.5 4-2.1-0.1-4.3-0.3-6.4-0.8-2.1-0.5-2.4-2.2-0.8-3.7 1.6-1.6 3.6-1.9 5.8-1.8 2.9 0.2 5.9 0.5 8.8 0.8 1 0.1 1.5-0.3 2-1.1 3.2-4.7 4.7-10 5.2-15.6 0.3-4.4 0.1-8.8-1.6-13-1.2-2.9-3-5.2-5.8-6.8-1.9-1.1-3.7-2.3-5.6-3.4-0.3-0.2-0.8-0.3-1-0.2-4 1.9-8 1.4-12 0.3-2.8-0.8-5.2-2.2-7.5-3.9-2.5-1.8-5.2-3.2-8.2-3.7-2.1-0.1 4.0 0.4-6 1.7zm37.5 47.4c-1.1 0.1-2.2 0.3-3.2 0.4-1.5 0.1-2.7-0.5-4.2 0-0.2 0.1-0.9 0.3-0.9 0.6 0 0.2 0.2 0.4 0.8 0.6 1.3 0.4 2.2 0.1 5.4 0 1.1 0 1.8-0.5 2.1-1.6z"/>
+                <path fill="#00a650" d="m24.1 82.9c0.1 0.1 0.2 0.2 0.4 0.3 0.6-0.1 1.2-0.2 1.8-0.2 3.4-0.1 5.5 1.7 9.2 3.6 1.5 0.8 3.9 2 7.1 2.8 1.8 0.5 7.2 1.9 8.5 0 0.5-0.7-0.1-1.1 0.3-3.5 0.3-2 0.9-3.5 1-3.8 0.4-0.8 1-2 2.1-3.2-0.2-0.1-0.5-0.2-0.7-0.3-2.7-1.1-5.4-2.2-8.2-3.3-0.6-0.2-1.3-0.3-1.9-0.1-3.4 1.1-6.8 1.6-10.4 0.6-0.5-0.1-1.2-0.1-1.6 0.2-1.7 1.1-3.4 2.2-4.9 3.5-1.1 0.9-1.8 2.3-2.7 3.4z"/>
+                <path fill="#00a650" d="m70 99.2c1 0.5 2.4 1 3.8 0.5 1.7-0.7 1.5-2.3 3.5-4.5 0.7-0.7 2-2.1 5.4-3.5 1.2-0.5 2.3-1.1 3.3-2 2.9-2.6 3-7.2 0.3-9.7-0.6-0.6-1.2-0.7-2-0.4-7.9 2.9-15.9 2.7-23.8 0.1-1.3-0.4-2-0.1-2.8 0.9-2 2.6-2 6.8 0.1 9.2 1.1 1.3 2.7 2.1 4 3.2 1.9 1.7 3.2 1.4 4.9 2.7 1.6 1.2 2.7 2.6 3.3 3.5z"/>
+                <path fill="#00a650" d="m90.6 80.3c0.6 0.9 1 1.8 1.3 2.7 0.1 0.5 0.5 2 0.2 4-0.3 2-1 2.2-0.8 2.9 0.5 1.8 5.4 2.6 9.5 1.5 2.2-0.6 3.8-1.7 6.7-3.6 2.8-1.9 3-2.5 4.8-3.4 1.7-0.9 4.2-1.8 7.9-1.9-0.3-0.8-0.7-1.9-1.5-2.9-0.5-0.6-1.1-1.1-1.7-1.6-1.1-0.8-2.3-1-3.7-0.6-1.5 0.5-3.2 0.8-4.7 1.3-3.6 1-7.2 1.2-10.9 0.3-2.7-0.6-4.9 0.2-7.1 1.3z"/>
+                <path fill="#f47216" d="m72.2 8.7c7.5 11.2 13.4 23 16.2 36.1 1.3 6 2 12.1 0.7 18.3-1.2 5.1-3.7 9.5-7.8 12.7-6 4.6-14.4 4.1-20.2-1.2-5.3-4.8-7.7-10.9-7.8-17.9-0.1-6.9 1.7-13.5 4.1-19.9 3.6-9.8 8.8-18.9 14.6-27.6-0.1-0.2 0-0.3 0.2-0.5zm-39 48.4c-1.7-5.5-2.5-11.2-2.5-17 0-4.2 0.9-8.5 1.3-12.7 0.1-0.5-0.1-1.2-0.4-1.5-2.5-2.8-4.8-5.7-7.5-8.2-5.1-4.6-11-7.4-17.7-7.6 1.3 2.9 2.9 5.7 3.9 8.8 2.6 7.4 3.1 15.1 3.1 22.9 0 4 0.7 7.8 2.2 11.4 2.5 6.2 6.1 11.7 11.7 15.6 4 2.8 8.5 3.6 13.6 2.1-3.8-4.1-6.1-8.8-7.7-13.8zm68.9 17.3c1.8 0.1 3.7 0.5 5.5 0.4 3.9-0.2 7.2-2.1 9.9-4.9 7.4-7.5 11.3-16.6 11-27.2-0.1-5.6-0.6-11.2-0.7-16.7-0.1-4.8 1.4-9.3 4-13.3 0.7-1.1 1.6-2.2 2.5-3.4-3.2 0.1-6.1 0.8-8.9 2.1-7.5 3.6-12.6 9.6-16.2 17-0.2 0.3-0.2 0.8-0.1 1.1 1.2 4.9 2.2 9.9 2.6 14.9 0.4 6 0.1 11.8-1.9 17.5-1.6 4.6-4.1 8.6-7.8 11.9 0.1 0.3 0.1 0.4 0.1 0.6zm-13.4 2.6c9.4-1.8 17.1-9.7 18.8-19.4 1.1-6.5 0.5-13-0.7-19.4-0.9-4.6-2.2-9.1-3.3-13.7-0.9-3.8-1.4-7.6-0.4-11.4 0.4-1.5 0.9-2.9 1.5-4.7-1.6 0.4-3.1 0.7-4.5 1.3-6.5 2.5-10.9 7.3-14.4 13.2-0.2 0.3-0.2 0.9 0 1.3 4.4 8.3 7.5 17.1 8.2 26.6 0.3 3.4 0.4 7-0.1 10.4-0.7 5-3.1 9.4-5.6 13.6-0.5 0.8-0.9 1.5-1.6 2.6 1-0.3 1.5-0.3 2.1-0.4zm-50.7-63.3c1.2 4 0.9 8.2-0.1 12.2-1.6 5.7-2.4 11.5-2.3 17.5 0.1 6.4 1.4 12.5 4.3 18.2 2.8 5.4 6.6 9.8 12.1 12.5 1.2 0.6 2.5 1 3.9 1.6-1.1-1.8-2.1-3.2-2.9-4.8-4-8.1-4.8-16.6-3.2-25.5 1.1-5.9 3.2-11.5 5.5-17.1 0.2-0.5 0.3-1.4 0-1.9-2.8-4.9-6.1-9.4-10.3-13.2-2.8-2.6-5.9-4.6-9.5-5.5 0.9 2.1 1.9 4 2.5 6z"/>
+              </svg>
+            </div>
+            <div style={{ textAlign: 'center', flex: 1, padding: '0 4px' }}>
+              <div className="poster-header-text" style={{ fontSize: 11.5, fontWeight: 900, letterSpacing: '0.03em', color: '#f76201', textTransform: 'uppercase', lineHeight: 1.2 }}>
+                BHARATIYA JANATA PARTY
+              </div>
+              <div style={{ fontSize: 8.5, fontWeight: 800, color: '#475569', marginTop: 1 }}>
+                TAMIL NADU LOCAL BODY ELECTIONS 2026-27
+              </div>
+            </div>
+            <div style={{ width: 14 }} />
+          </div>
+
+          {/* Candidate Avatar & Badge Section */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 2, zIndex: 1 }}>
+            <div style={{ position: 'relative' }}>
+              <div
+                className="poster-avatar-img"
+                style={{
+                  width: 84, height: 84, borderRadius: '50%',
+                  backgroundImage: `url("${candidateImg}")`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'top center',
+                  backgroundRepeat: 'no-repeat',
+                  border: '4px solid #FFFFFF', boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+                  backgroundColor: '#FFFFFF'
+                }}
+              />
+              <div style={{
+                position: 'absolute', bottom: 0, right: 0,
+                background: '#00A650', color: '#FFF', width: 22, height: 22,
+                borderRadius: '50%', border: '2px solid #FFF',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900
+              }}>
+                ✓
+              </div>
+            </div>
+
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#FFFFFF', textTransform: 'capitalize', textShadow: '0 2px 4px rgba(0,0,0,0.25)' }}>
+                {candName}
+              </div>
+            </div>
+          </div>
+
+          {/* Candidate Details Box (Pure White Panel inside Saffron Card) */}
+          <div className="poster-details-box" style={{
+            background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.6)',
+            borderRadius: 14, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4.5,
+            fontSize: 11, zIndex: 1, boxShadow: '0 6px 18px rgba(0,0,0,0.15)', color: '#0F172A'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 3 }}>
+              <span style={{ color: '#64748B', fontWeight: 500 }}>Application ID:</span>
+              <span style={{ fontWeight: 800, fontFamily: 'monospace', color: '#FF6600', fontSize: 12 }}>{result.application_id}</span>
+            </div>
+            {epicNo && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 3 }}>
+                <span style={{ color: '#64748B', fontWeight: 500 }}>EPIC / Voter ID:</span>
+                <span style={{ fontWeight: 700, color: '#0F172A' }}>{epicNo}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 3 }}>
+              <span style={{ color: '#64748B', fontWeight: 500 }}>Contest Preference:</span>
+              <span style={{ fontWeight: 700, color: '#E65C00' }}>{firstPos}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: '#64748B', fontWeight: 500 }}>Local Body Ward:</span>
+              <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 9, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{lbSummary}</span>
+            </div>
+          </div>
+
+          {/* Candidate Declaration Banner (Large Font, Premium Typography & Compact Spacing) */}
+          <div style={{
+            margin: '2px 0', background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.28)',
+            borderRadius: 10, padding: '7px 12px', textAlign: 'center', color: '#FFFFFF',
+            fontSize: 11, fontWeight: 800, fontFamily: "'Outfit', 'Inter', system-ui, -apple-system, sans-serif",
+            lineHeight: 1.38, letterSpacing: '0.015em', textShadow: '0 1px 3px rgba(0,0,0,0.4)', zIndex: 1
+          }}>
+            {t('I have applied to the Bharatiya Janata Party to contest the local body elections and have received the necessary certificate.')}
+          </div>
+
+          {/* QR Code & Verification Stamp Footer (Pure White Panel inside Saffron Card) */}
+          <div style={{
+            background: '#FFFFFF', borderRadius: 12, padding: '8px 10px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.15)', zIndex: 1, color: '#0F172A'
+          }}>
+            <div>
+              <div style={{ fontSize: 8, color: '#64748B', fontWeight: 500 }}>Submitted Timestamp</div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#0F172A', marginTop: 1 }}>
+                {fmtDateTime(result.submitted_at)}
+              </div>
+              <div style={{ fontSize: 8, color: '#FF6600', marginTop: 1, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 3 }}>
+                <i className="bi bi-shield-check" /> Official Party Verification 2026-27
+              </div>
+            </div>
+            {qrUrl && (
+              <a href={verifyLinkUrl} target="_blank" rel="noopener noreferrer" title="Click to view candidate verification page">
+                <img
+                  src={qrUrl}
+                  alt="QR Verification"
+                  className="poster-qr-img"
+                  style={{ width: 44, height: 44, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFF', display: 'block', cursor: 'pointer' }}
+                />
+              </a>
+            )}
+          </div>
+        </div>
+
+        {/* Button to Open 9:16 Digital Card Template Modal */}
+        <button
+          type="button"
+          style={{
+            ...primaryBtn(true),
+            background: 'linear-gradient(135deg, #f76201 0%, #d85400 100%)',
+            boxShadow: '0 4px 14px rgba(247, 98, 1, 0.35)',
+            padding: '12px 16px',
+            width: '100%'
+          }}
+          onClick={() => setShowPosterModal(true)}
+        >
+          <i className="bi bi-aspect-ratio-fill" style={{ fontSize: 16 }} />
+          {t('View / Download 9:16 Digital Application Poster Card')} 📱
+        </button>
       </div>
-      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--color-chalk)' }}>
-        {alreadyApplied ? t('Application Already Submitted') : t('Application Submitted')}
+
+      {/* BJP Organiser Get In Touch Box */}
+      <div style={cardBox}>
+        <div style={cardTitle}>
+          <i className="bi bi-person-lines-fill text-saffron" />
+          {t('BJP Organiser Get In Touch')}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
+          {t('You can reach out to your local BJP Organiser for updates or send a one-time message directly.')}
+        </div>
+
+        <div style={{ background: 'var(--color-abyss)', border: '1px solid var(--color-graphite)', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#FF6600', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <i className="bi bi-telephone-fill" /> {t('BJP Organiser Helpline Numbers')}:
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-chalk)' }}>
+            +91 98765 43210 &nbsp;|&nbsp; +91 91234 56789
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--color-ash)' }}>
+            <i className="bi bi-geo-alt-fill text-saffron me-1" />
+            {t('BJP Party Headquarters & Organiser Office')}
+          </div>
+        </div>
+
+        {sentMsg ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: '#ECFDF5', border: '1.5px solid #10B981', borderRadius: 10, padding: 10, color: '#059669', fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="bi bi-check-circle-fill" style={{ fontSize: 18 }} />
+              <div>{t('✓ Message sent to Organiser (One-time submission completed)')}</div>
+            </div>
+
+            <div style={{ background: 'rgba(255,102,0,0.06)', border: '1.5px solid #FF6600', borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#FF6600', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i className="bi bi-chat-square-quote-fill" /> {t('Organiser Reach Out Message (One-Time Candidate Query)')}
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--color-chalk)', fontWeight: 600, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}>
+                "{sentMsg.text}"
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-ash)', marginTop: 2 }}>
+                <i className="bi bi-clock-history me-1" />
+                {t('Sent on')}: {fmtDateTime(sentMsg.sent_at)}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={fieldLabel}>
+              <i className="bi bi-chat-left-dots-fill text-saffron me-1" />
+              {t('Send a One-Time Request / Message to Organiser')}
+            </span>
+            <textarea
+              style={{ ...controlStyle, resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+              rows={3}
+              value={orgMsg}
+              disabled={sending}
+              placeholder={t('Type your query or one-time message to local BJP Organiser here...')}
+              onChange={(e) => { setOrgMsg(e.target.value); if (error) setError('') }}
+            />
+            {error && <div style={{ fontSize: 12, color: '#e74c3c' }}><i className="bi bi-exclamation-circle" /> {error}</div>}
+            <button
+              style={primaryBtn(Boolean(orgMsg.trim()) && !sending)}
+              disabled={!orgMsg.trim() || sending}
+              onClick={handleSendOrganiserMsg}
+            >
+              {sending ? t('Sending message...') : t('Send Request to Organiser')} <i className="bi bi-send-fill" />
+            </button>
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 13, color: 'var(--color-ash)', lineHeight: 1.5 }}>
-        {alreadyApplied
-          ? t('You have already submitted an application with this mobile number. It is being reviewed by the Organisation.')
-          : t('Your application will be reviewed by the Organisation. You will be contacted on your registered mobile number.')}
-      </div>
-      <div style={{ width: '100%', background: 'var(--color-abyss)', border: '1px solid var(--color-graphite)', borderRadius: 10, padding: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <KV k={t('Application ID')} v={result.application_id} />
-        <KV k={t('Submitted On')} v={fmtDateTime(result.submitted_at)} />
-        <KV k={t('Mobile Number')} v={result.mobile} />
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--color-ash)' }}>
-        <i className="bi bi-info-circle" /> {t('Please save your Application ID for future reference.')}
-      </div>
+
+
+
+
+      {/* 9:16 Ratio Poster Template Modal */}
+      {showPosterModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(6px)',
+          zIndex: 99999, display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: 16, overflowY: 'auto'
+        }}>
+          <div style={{ maxWidth: 380, width: '100%', display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+            
+            {/* Modal Top Actions with Language Toggle */}
+            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: '#FFF', gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: '#f76201', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <i className="bi bi-phone-fill me-1" /> 9:16 Card
+              </span>
+
+              {/* Language Switcher (EN / தமிழ்) */}
+              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.12)', borderRadius: 18, padding: 3, border: '1px solid rgba(255,255,255,0.25)' }}>
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  style={{
+                    background: lang === 'en' ? '#f76201' : 'transparent',
+                    color: '#FFF', border: 'none', borderRadius: 14, padding: '3px 10px',
+                    fontSize: 11, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('ta')}
+                  style={{
+                    background: lang === 'ta' ? '#f76201' : 'transparent',
+                    color: '#FFF', border: 'none', borderRadius: 14, padding: '3px 10px',
+                    fontSize: 11, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  தமிழ்
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowPosterModal(false)}
+                style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#FFF', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 9:16 Aspect Ratio Poster Card Container (BJP Saffron #f76201 Theme) */}
+            <div
+              ref={posterRef}
+              className="bjp-poster-916-card"
+              style={{
+                width: '100%',
+                maxWidth: 350,
+                aspectRatio: '9 / 16',
+                background: 'linear-gradient(165deg, #f76201 0%, #d85400 100%)',
+                border: '3px solid #f76201',
+                borderRadius: 20,
+                boxShadow: '0 12px 36px rgba(247, 98, 1, 0.35)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '16px 14px',
+                boxSizing: 'border-box',
+                position: 'relative',
+                overflow: 'hidden',
+                color: '#FFFFFF'
+              }}
+            >
+              {/* Top Tricolor Accent Line */}
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, height: 5,
+                background: 'linear-gradient(90deg, #FFFFFF 0%, #FFFFFF 50%, #00A650 50%, #00A650 100%)',
+                zIndex: 10
+              }} />
+
+              {/* Watermark Lotus Background */}
+              <div style={{ position: 'absolute', top: '45%', left: '50%', transform: 'translate(-50%, -50%)', opacity: 0.08, pointerEvents: 'none' }}>
+                <img src="/bjp_logo.png" alt="" style={{ width: 260 }} onError={(e) => { e.target.src = '/bjp_logo.svg' }} />
+              </div>
+
+              {/* Poster Top Banner Header (Pure White Panel) */}
+              <div style={{
+                background: '#FFFFFF',
+                borderRadius: 14, padding: '9px 12px', textAlign: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.15)', zIndex: 1
+              }}>
+                <div style={{ width: 38, height: 38, background: '#FFF7ED', borderRadius: '50%', border: '1px solid #FFE4D6', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 3, flexShrink: 0 }}>
+                  <svg viewBox="0 0 141 151" width="30" height="30">
+                    <path fill="#000000" d="m19.4 88.3c-1.1-1.8-0.9-3.4-0.3-5.1 1.4-3.7 4.2-6.2 7.3-8.3 0.4-0.2 0.7-0.5 0.9-0.6-2.1-1.5-4.5-2.8-6.5-4.6-5.1-4.6-7.9-10.6-9.8-17-1.8-5.9-2.4-12.1-2.4-18.2 0-7.7-1.7-15.1-5.3-21.9-1.1-2-2.4-3.9-3.7-5.9 1.4-1.3 3.2-1.5 5-1.5 5.7-0.1 10.9 1.6 15.8 4.4 5.1 3 9.2 7 12.6 11.7 0.2 0.3 0.5 0.6 0.8 1 2.3-7.3-1.5-12.6-5.3-18 2-1.2 4.1-0.9 6.1-0.6 7.6 1.1 13.7 5 18.7 10.6 1.9 2.1 3.4 4.5 5 6.8 0.3 0.3 0.5 0.7 0.5 0.8 4.3-7.2 8.5-14.4 13-22 4.8 6.1 7.8 12.6 10.8 18.9 2.4-2.7 4.8-5.5 7.4-8 3.8-3.6 8.2-6.3 13.2-7.7 2.7-0.7 4.2-0.7 7 0.3-3.4 6.1-4.8 12.5-3.1 19.3 1.4-1.9 2.7-4 4.3-5.8 5.3-6.2 11.7-10.4 19.9-11.7 2.4-0.4 4.9-0.6 7.2 0.1 0.7 0.2 1.4 0.6 2.3 1-0.4 0.5-0.7 0.8-1 1.1-4.4 5-7.3 10.6-7.5 17.4-0.1 3.8 0.2 7.6 0.5 11.4 0.6 8-0.1 15.7-3.5 23.1-2.4 5.3-5.8 9.9-10.1 13.9-0.1 0.1-0.3 0.3-0.4 0.4-0.1 0.1-0.1 0.1-0.1 0.2 4.2 3.8 8 7.7 6 14.3-0.8-0.5-1.4-0.9-2-1.3-1.6-1.1-3.3-1.3-5.1-0.7-2.9 0.8-5.3 2.5-7.5 4.4-3 2.7-6.4 4.5-10.4 5.2-3.8 0.7-7.6 0.5-11.3-1-0.4-0.2-0.9-0.2-1.3-0.1-6.3 1.4-10.8 7-10.7 13 0.1 6.8-0.3 13.6-2.1 20.2-0.7 2.4-1.7 4.6-2.6 6.9q2.7-0.3 5.7-0.6c0.6-0.1 1.2-0.2 1.8 0 1 0.2 1.3 1 1.1 2-0.2 1.1-1.1 2-1.9 2-2.7-0.1-5.4-0.2-8.1-0.1-1.7 0-1.9-1.4-2.6-2.3-0.7-0.8 0-1.3 0.4-1.9 2-2.9 2.9-6.2 3.3-9.7 0.6-4.9 0.9-9.8 1.2-14.7 0.1-1.5-0.4-2-2.1-2.3 0 0.5-0.1 1-0.1 1.5 0 5.4 0 10.7-1.1 16-0.9 4.1-2.2 7.9-5.3 10.9-3.2 3.1-7.2 4.1-11.5 4-2.1-0.1-4.3-0.3-6.4-0.8-2.1-0.5-2.4-2.2-0.8-3.7 1.6-1.6 3.6-1.9 5.8-1.8 2.9 0.2 5.9 0.5 8.8 0.8 1 0.1 1.5-0.3 2-1.1 3.2-4.7 4.7-10 5.2-15.6 0.3-4.4 0.1-8.8-1.6-13-1.2-2.9-3-5.2-5.8-6.8-1.9-1.1-3.7-2.3-5.6-3.4-0.3-0.2-0.8-0.3-1-0.2-4 1.9-8 1.4-12 0.3-2.8-0.8-5.2-2.2-7.5-3.9-2.5-1.8-5.2-3.2-8.2-3.7-2.1-0.1 4.0 0.4-6 1.7zm37.5 47.4c-1.1 0.1-2.2 0.3-3.2 0.4-1.5 0.1-2.7-0.5-4.2 0-0.2 0.1-0.9 0.3-0.9 0.6 0 0.2 0.2 0.4 0.8 0.6 1.3 0.4 2.2 0.1 5.4 0 1.1 0 1.8-0.5 2.1-1.6z"/>
+                    <path fill="#00a650" d="m24.1 82.9c0.1 0.1 0.2 0.2 0.4 0.3 0.6-0.1 1.2-0.2 1.8-0.2 3.4-0.1 5.5 1.7 9.2 3.6 1.5 0.8 3.9 2 7.1 2.8 1.8 0.5 7.2 1.9 8.5 0 0.5-0.7-0.1-1.1 0.3-3.5 0.3-2 0.9-3.5 1-3.8 0.4-0.8 1-2 2.1-3.2-0.2-0.1-0.5-0.2-0.7-0.3-2.7-1.1-5.4-2.2-8.2-3.3-0.6-0.2-1.3-0.3-1.9-0.1-3.4 1.1-6.8 1.6-10.4 0.6-0.5-0.1-1.2-0.1-1.6 0.2-1.7 1.1-3.4 2.2-4.9 3.5-1.1 0.9-1.8 2.3-2.7 3.4z"/>
+                    <path fill="#00a650" d="m70 99.2c1 0.5 2.4 1 3.8 0.5 1.7-0.7 1.5-2.3 3.5-4.5 0.7-0.7 2-2.1 5.4-3.5 1.2-0.5 2.3-1.1 3.3-2 2.9-2.6 3-7.2 0.3-9.7-0.6-0.6-1.2-0.7-2-0.4-7.9 2.9-15.9 2.7-23.8 0.1-1.3-0.4-2-0.1-2.8 0.9-2 2.6-2 6.8 0.1 9.2 1.1 1.3 2.7 2.1 4 3.2 1.9 1.7 3.2 1.4 4.9 2.7 1.6 1.2 2.7 2.6 3.3 3.5z"/>
+                    <path fill="#00a650" d="m90.6 80.3c0.6 0.9 1 1.8 1.3 2.7 0.1 0.5 0.5 2 0.2 4-0.3 2-1 2.2-0.8 2.9 0.5 1.8 5.4 2.6 9.5 1.5 2.2-0.6 3.8-1.7 6.7-3.6 2.8-1.9 3-2.5 4.8-3.4 1.7-0.9 4.2-1.8 7.9-1.9-0.3-0.8-0.7-1.9-1.5-2.9-0.5-0.6-1.1-1.1-1.7-1.6-1.1-0.8-2.3-1-3.7-0.6-1.5 0.5-3.2 0.8-4.7 1.3-3.6 1-7.2 1.2-10.9 0.3-2.7-0.6-4.9 0.2-7.1 1.3z"/>
+                    <path fill="#f47216" d="m72.2 8.7c7.5 11.2 13.4 23 16.2 36.1 1.3 6 2 12.1 0.7 18.3-1.2 5.1-3.7 9.5-7.8 12.7-6 4.6-14.4 4.1-20.2-1.2-5.3-4.8-7.7-10.9-7.8-17.9-0.1-6.9 1.7-13.5 4.1-19.9 3.6-9.8 8.8-18.9 14.6-27.6-0.1-0.2 0-0.3 0.2-0.5zm-39 48.4c-1.7-5.5-2.5-11.2-2.5-17 0-4.2 0.9-8.5 1.3-12.7 0.1-0.5-0.1-1.2-0.4-1.5-2.5-2.8-4.8-5.7-7.5-8.2-5.1-4.6-11-7.4-17.7-7.6 1.3 2.9 2.9 5.7 3.9 8.8 2.6 7.4 3.1 15.1 3.1 22.9 0 4 0.7 7.8 2.2 11.4 2.5 6.2 6.1 11.7 11.7 15.6 4 2.8 8.5 3.6 13.6 2.1-3.8-4.1-6.1-8.8-7.7-13.8zm68.9 17.3c1.8 0.1 3.7 0.5 5.5 0.4 3.9-0.2 7.2-2.1 9.9-4.9 7.4-7.5 11.3-16.6 11-27.2-0.1-5.6-0.6-11.2-0.7-16.7-0.1-4.8 1.4-9.3 4-13.3 0.7-1.1 1.6-2.2 2.5-3.4-3.2 0.1-6.1 0.8-8.9 2.1-7.5 3.6-12.6 9.6-16.2 17-0.2 0.3-0.2 0.8-0.1 1.1 1.2 4.9 2.2 9.9 2.6 14.9 0.4 6 0.1 11.8-1.9 17.5-1.6 4.6-4.1 8.6-7.8 11.9 0.1 0.3 0.1 0.4 0.1 0.6zm-13.4 2.6c9.4-1.8 17.1-9.7 18.8-19.4 1.1-6.5 0.5-13-0.7-19.4-0.9-4.6-2.2-9.1-3.3-13.7-0.9-3.8-1.4-7.6-0.4-11.4 0.4-1.5 0.9-2.9 1.5-4.7-1.6 0.4-3.1 0.7-4.5 1.3-6.5 2.5-10.9 7.3-14.4 13.2-0.2 0.3-0.2 0.9 0 1.3 4.4 8.3 7.5 17.1 8.2 26.6 0.3 3.4 0.4 7-0.1 10.4-0.7 5-3.1 9.4-5.6 13.6-0.5 0.8-0.9 1.5-1.6 2.6 1-0.3 1.5-0.3 2.1-0.4zm-50.7-63.3c1.2 4 0.9 8.2-0.1 12.2-1.6 5.7-2.4 11.5-2.3 17.5 0.1 6.4 1.4 12.5 4.3 18.2 2.8 5.4 6.6 9.8 12.1 12.5 1.2 0.6 2.5 1 3.9 1.6-1.1-1.8-2.1-3.2-2.9-4.8-4-8.1-4.8-16.6-3.2-25.5 1.1-5.9 3.2-11.5 5.5-17.1 0.2-0.5 0.3-1.4 0-1.9-2.8-4.9-6.1-9.4-10.3-13.2-2.8-2.6-5.9-4.6-9.5-5.5 0.9 2.1 1.9 4 2.5 6z"/>
+                  </svg>
+                </div>
+                <div style={{ textAlign: 'center', flex: 1, padding: '0 6px' }}>
+                  <div className="poster-header-text" style={{ fontSize: 12.5, fontWeight: 900, letterSpacing: '0.03em', color: '#f76201', textTransform: 'uppercase' }}>
+                    BHARATIYA JANATA PARTY
+                  </div>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, color: '#475569', marginTop: 2 }}>
+                    TAMIL NADU LOCAL BODY ELECTIONS 2026-27
+                  </div>
+                </div>
+                <div style={{ width: 20 }} />
+              </div>
+
+              {/* Candidate Avatar & Badge Section */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginTop: 6, zIndex: 1 }}>
+                <div style={{ position: 'relative' }}>
+                  <div
+                    className="poster-avatar-img"
+                    style={{
+                      width: 94, height: 94, borderRadius: '50%',
+                      backgroundImage: `url("${candidateImg}")`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'top center',
+                      backgroundRepeat: 'no-repeat',
+                      border: '4px solid #FFFFFF', boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+                      backgroundColor: '#FFFFFF'
+                    }}
+                  />
+                  <div style={{
+                    position: 'absolute', bottom: 0, right: 0,
+                    background: '#00A650', color: '#FFF', width: 26, height: 26,
+                    borderRadius: '50%', border: '2.5px solid #FFF',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900
+                  }}>
+                    ✓
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#FFFFFF', textTransform: 'capitalize', textShadow: '0 2px 4px rgba(0,0,0,0.25)' }}>
+                    {candName}
+                  </div>
+                </div>
+              </div>
+
+              {/* Candidate Details Box (Pure White Panel inside Saffron Card) */}
+              <div className="poster-details-box" style={{
+                background: '#FFFFFF', border: '1px solid rgba(255,255,255,0.6)',
+                borderRadius: 14, padding: 12, display: 'flex', flexDirection: 'column', gap: 7,
+                fontSize: 12, zIndex: 1, boxShadow: '0 6px 18px rgba(0,0,0,0.15)', color: '#0F172A'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 5 }}>
+                  <span style={{ color: '#64748B', fontWeight: 500 }}>Application ID:</span>
+                  <span style={{ fontWeight: 800, fontFamily: 'monospace', color: '#FF6600', fontSize: 13 }}>{result.application_id}</span>
+                </div>
+                {epicNo && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 5 }}>
+                    <span style={{ color: '#64748B', fontWeight: 500 }}>EPIC / Voter ID:</span>
+                    <span style={{ fontWeight: 700, color: '#0F172A' }}>{epicNo}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: 5 }}>
+                  <span style={{ color: '#64748B', fontWeight: 500 }}>Contest Preference:</span>
+                  <span style={{ fontWeight: 700, color: '#E65C00' }}>{firstPos}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748B', fontWeight: 500 }}>Local Body Ward:</span>
+                  <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 9, textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>{lbSummary}</span>
+                </div>
+              </div>
+
+              {/* Candidate Declaration Banner (Large Font, Premium Typography & Compact Spacing) */}
+              <div style={{
+                margin: '2px 0', background: 'rgba(0,0,0,0.22)', border: '1px solid rgba(255,255,255,0.28)',
+                borderRadius: 10, padding: '7px 12px', textAlign: 'center', color: '#FFFFFF',
+                fontSize: 11, fontWeight: 800, fontFamily: "'Outfit', 'Inter', system-ui, -apple-system, sans-serif",
+                lineHeight: 1.38, letterSpacing: '0.015em', textShadow: '0 1px 3px rgba(0,0,0,0.4)', zIndex: 1
+              }}>
+                {t('I have applied to the Bharatiya Janata Party to contest the local body elections and have received the necessary certificate.')}
+              </div>
+
+              {/* QR Code & Verification Stamp Footer (Pure White Panel inside Saffron Card) */}
+              <div style={{
+                background: '#FFFFFF', borderRadius: 12, padding: '10px 12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                boxShadow: '0 4px 14px rgba(0,0,0,0.15)', zIndex: 1, color: '#0F172A'
+              }}>
+                <div>
+                  <div style={{ fontSize: 8, color: '#64748B', fontWeight: 500 }}>Submitted Timestamp</div>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: '#0F172A', marginTop: 1 }}>
+                    {fmtDateTime(result.submitted_at)}
+                  </div>
+                  <div style={{ fontSize: 8, color: '#FF6600', marginTop: 1, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <i className="bi bi-shield-check" /> Official Party Verification 2026-27
+                  </div>
+                </div>
+                {qrUrl && (
+                  <a href={verifyLinkUrl} target="_blank" rel="noopener noreferrer" title="Click to view candidate verification page">
+                    <img src={qrUrl} alt="QR Verification" className="poster-qr-img" style={{ width: 48, height: 48, borderRadius: 6, border: '1px solid #CBD5E1', background: '#FFF', display: 'block', cursor: 'pointer' }} />
+                  </a>
+                )}
+              </div>
+            </div>
+
+
+
+
+
+            {/* Download Button */}
+            <div style={{ display: 'flex', gap: 10, width: '100%', maxWidth: 350 }}>
+              <button
+                onClick={handleDownloadPoster}
+                disabled={downloading}
+                style={{ ...primaryBtn(true), background: '#10B981' }}
+              >
+                <i className="bi bi-download" /> {downloading ? t('Generating PNG Card...') : t('Download 9:16 Card Image')}
+              </button>
+              <button
+                onClick={() => setShowPosterModal(false)}
+                style={{ ...secondaryBtn(true), flex: '0 0 80px' }}
+              >
+                {t('Close')}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Interactive QR Scan Verification Preview Modal */}
+      {showQrScanModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)', backdropFilter: 'blur(8px)',
+          zIndex: 999999, display: 'flex', flexDirection: 'column', alignItems: 'center',
+          justifyContent: 'center', padding: 16
+        }}>
+          <div style={{
+            width: '100%', maxWidth: 360, background: '#FFFFFF', borderRadius: 20,
+            padding: 20, color: '#0F172A', boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+            display: 'flex', flexDirection: 'column', gap: 14, position: 'relative',
+            border: '2px solid #f76201'
+          }}>
+            <button
+              onClick={() => setShowQrScanModal(false)}
+              style={{
+                position: 'absolute', top: 12, right: 12, background: '#F1F5F9', border: 'none',
+                width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontWeight: 800, color: '#64748B'
+              }}
+            >
+              ✕
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 46, height: 46, borderRadius: '50%', background: '#ECFDF5', border: '2px solid #10B981', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className="bi bi-qr-code-scan" style={{ fontSize: 24, color: '#059669' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 900, color: '#0F172A' }}>
+                  {t('QR Code Verification Scan')}
+                </div>
+                <div style={{ fontSize: 11, color: '#059669', fontWeight: 700, wordBreak: 'break-all', marginTop: 1 }}>
+                  https://membership.bjp.org/verify
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#ECFDF5', border: '1.5px solid #10B981', borderRadius: 14, padding: '12px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 13.5, fontWeight: 900, color: '#059669', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <i className="bi bi-patch-check-fill" style={{ fontSize: 20 }} /> {t('VERIFIED REGISTERED CANDIDATE')}
+              </div>
+              <div style={{ fontSize: 11, color: '#047857', marginTop: 3, fontWeight: 600 }}>
+                {t('Official Party Digital Verification Record 2026-27')}
+              </div>
+            </div>
+
+            <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 7, fontSize: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 5 }}>
+                <span style={{ color: '#64748B' }}>{t('Candidate Name')}:</span>
+                <span style={{ fontWeight: 800, color: '#0F172A' }}>{candName}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 5 }}>
+                <span style={{ color: '#64748B' }}>{t('Application ID')}:</span>
+                <span style={{ fontWeight: 800, color: '#f76201', fontFamily: 'monospace', fontSize: 13 }}>{result.application_id}</span>
+              </div>
+              {epicNo && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 5 }}>
+                  <span style={{ color: '#64748B' }}>{t('Voter EPIC No')}:</span>
+                  <span style={{ fontWeight: 700, color: '#0F172A' }}>{epicNo}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 5 }}>
+                <span style={{ color: '#64748B' }}>{t('Contest Position')}:</span>
+                <span style={{ fontWeight: 700, color: '#f76201' }}>{firstPos}</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <span style={{ color: '#64748B' }}>{t('Local Body Ward')}:</span>
+                <span style={{ fontWeight: 700, color: '#0F172A', fontSize: 11.5 }}>{lbSummary}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowQrScanModal(false)}
+              style={{ ...primaryBtn(true), background: 'linear-gradient(135deg, #f76201 0%, #d85400 100%)', width: '100%' }}
+            >
+              {t('Close QR Verification')}
+            </button>
+          </div>
+
+        </div>
+      )}
     </div>
   )
 }
+
+
+
+
 
 // ── Main page ──────────────────────────────────────────────
 export default function ChatbotPage() {
@@ -741,48 +2028,62 @@ export default function ChatbotPage() {
     if (initializedRef.current) return
     initializedRef.current = true
 
-    // Restore a previous session (so a refresh doesn't reset to the Start screen).
-    const saved = loadSession()
-    if (saved && Array.isArray(saved.messages) && saved.messages.length && saved.chatState && saved.chatState !== S.WELCOME) {
-      // A refresh mid-submit should land back on the review step, not a spinner.
-      const cs = saved.chatState === S.SUBMITTING ? S.REVIEW : saved.chatState
-      setAppData(saved.appData || emptyAppData())
-      mobileRef.current = saved.mobile || ''
+    const sess = loadSession()
+    const isActiveSession = sess && sess.chatState && ![S.WELCOME, S.SUBMITTED].includes(sess.chatState)
 
-      if (cs === S.SUBMITTED) {
-        // After submission, show a rich "Welcome back" card with person's name + the submitted card.
-        const submittedMsg = saved.messages.find((m) => m.type === 'submitted')
-        const voterName = saved.appData?.voter?.name || saved.appData?.voter?.voter_name || ''
-        const rebuilt = [{
-          id: `wb-${Date.now()}`, from: 'bot', type: 'welcome_back_banner',
-          name: voterName,
-          subtitle: 'Here is your submitted application for the BJP Tamil Nadu Local Body Elections 2026.',
-          ts: new Date(),
-        }]
-        if (submittedMsg) rebuilt.push({ ...submittedMsg, ts: submittedMsg.ts ? new Date(submittedMsg.ts) : new Date() })
-        setMessages(rebuilt)
-        setChatState(S.SUBMITTED)
-        return
+    if (isActiveSession) {
+      setChatState(sess.chatState)
+      if (sess.appData) setAppData(sess.appData)
+      if (sess.mobile) mobileRef.current = sess.mobile
+
+      // Reconstruct messages for active step so chatbot application stays active and synchronized
+      const restoredMsgs = [{ id: 'wb-1', from: 'bot', type: 'welcome_banner', ts: new Date() }]
+      const stepTypeMap = {
+        [S.AWAIT_MEMBERSHIP]: 'membership_card',
+        [S.PHOTO_UPLOAD]: 'photo_upload',
+        [S.LOCAL_BODY]: 'local_body',
+        [S.POSITION]: 'position',
+        [S.SOCIAL]: 'social',
+        [S.VIDEO_UPLOAD]: 'video_upload',
+        [S.WORK]: 'work',
+        [S.LOCAL_AREA]: 'local_area',
+        [S.SHORT_TEXTS]: 'short_texts',
+        [S.DOC_UPLOAD]: 'doc_upload',
+        [S.REVIEW]: 'review',
       }
-
-      setMessages(saved.messages.map((m) => ({ ...m, ts: m.ts ? new Date(m.ts) : new Date() })))
-      setChatState(cs)
-      return
+      if (stepTypeMap[sess.chatState]) {
+        restoredMsgs.push({ id: 'st-1', from: 'bot', type: stepTypeMap[sess.chatState], ts: new Date() })
+      } else if (sess.chatState === S.AWAIT_MOBILE) {
+        restoredMsgs.push({ id: 'm-1', from: 'bot', type: 'text', text: t('Welcome! Let us begin. Please enter your 10-digit mobile number.'), ts: new Date() })
+      } else if (sess.chatState === S.AWAIT_OTP) {
+        const mob = sess.mobile ? maskMobile(sess.mobile) : ''
+        restoredMsgs.push({ id: 'm-1', from: 'bot', type: 'text', text: t('An OTP has been sent to {mobile}. Please enter it below.', { mobile: mob }), ts: new Date() })
+      }
+      setMessages(restoredMsgs)
+    } else {
+      clearSession()
+      stopOtpCountdown()
+      setAppData(emptyAppData())
+      mobileRef.current = ''
+      setMessages([])
+      addMsg('bot', 'welcome_banner', {})
+      setChatState(S.WELCOME)
     }
+  }, [addMsg, t])
 
-    addMsg('bot', 'welcome_banner', {})
-    setChatState(S.WELCOME)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Persist the session on every meaningful change (once past the welcome step).
+  // Persist session active state for active chatbot users (refreshed sliding 30-min window)
   useEffect(() => {
-    if (!initializedRef.current) return
-    if (chatState === S.WELCOME) return
-    if (chatState === S.SUBMITTING) return // don't persist the transient submitting state
-    saveSession({ chatState, messages, appData, mobile: mobileRef.current })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages, chatState, appData])
+    if (chatState !== S.WELCOME && chatState !== S.SUBMITTED) {
+      saveSession({
+        chatState,
+        appData,
+        mobile: mobileRef.current,
+      })
+    } else {
+      clearSession()
+    }
+  }, [chatState, appData])
+
 
   // ── Auto-logout after 30 minutes of inactivity (sliding) ──
   const inactivityRef = useRef(null)
@@ -819,7 +2120,8 @@ export default function ChatbotPage() {
     }
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
-      if (!loadSession()) { doAutoLogout(); return } // expired while tab was hidden
+      const sess = loadSession()
+      if (!sess && chatState !== S.WELCOME) { doAutoLogout(); return } // expired while tab was hidden
       touchSession()
       arm()
     }
@@ -927,7 +2229,8 @@ export default function ChatbotPage() {
           setChatState(S.SUBMITTED)
           return
         }
-        await botSay(t('✅ Mobile verified! Please enter your BJP Membership ID.'), 300)
+        await botSay(t('✅ Mobile verified! Please enter your BJP Membership ID (Optional).'), 300)
+        addMsg('bot', 'membership_card', {})
         setChatState(S.AWAIT_MEMBERSHIP)
       } else {
         await botSay(`❌ ${res?.message || t('Invalid OTP. Please try again.')}`, 250)
@@ -938,11 +2241,11 @@ export default function ChatbotPage() {
     }
   }
 
-  const handleMembershipSubmit = async () => {
-    const membershipId = inputValue.trim()
-    if (!membershipId) { flashSendHint(t('Please enter your BJP Membership ID')); return }
+  const handleMembershipSubmit = async (customVal, skipped = false) => {
+    const rawVal = customVal !== undefined ? customVal : inputValue
+    const membershipId = skipped ? '' : String(rawVal || '').trim()
     patchData({ membershipId })
-    addMsg('user', 'text', { text: membershipId })
+    addMsg('user', 'text', { text: membershipId ? membershipId : t('Skipped') })
     setInputValue('')
     await botSay(t('Thank you. Now please enter your EPIC Number (Voter ID).'), 350)
     await botSay(t('Format: letters followed by digits, e.g. ABC1234567'), 200)
@@ -974,10 +2277,19 @@ export default function ChatbotPage() {
 
   const handleConfirmVoter = async () => {
     addMsg('user', 'text', { text: t('✓ Details confirmed') })
-    await botSay(t('Great! Now, some Local Body Details. Please choose your local body type and fill in the details.'), 350)
+    await botSay(t('Please upload your Candidate Passport Size Photo (Max 15 MB).'), 350)
+    addMsg('bot', 'photo_upload', {})
+    setChatState(S.PHOTO_UPLOAD)
+  }
+
+  const handlePhotoSubmit = async ({ photoFile, photoUrl }) => {
+    patchData({ photoFile, photoUrl })
+    addMsg('user', 'text', { text: photoUrl ? t('Passport photo ready ✓') : t('Skipped') })
+    await botSay(t('Great! Now, choose your Local Body type and fill in your area details.'), 350)
     addMsg('bot', 'local_body', {})
     setChatState(S.LOCAL_BODY)
   }
+
 
   const handleRetryVoter = async () => {
     addMsg('user', 'text', { text: t('↩ Re-enter ID') })
@@ -1006,6 +2318,15 @@ export default function ChatbotPage() {
   const handleSocialSubmit = async (social) => {
     patchData({ social: { facebook: '', instagram: '', twitter: '', youtube: '', ...social } })
     addMsg('user', 'text', { text: t('{count} social link(s) added', { count: Object.keys(social).length }) })
+    await botSay(t('Share your 1-minute Candidate Pitch Video (Optional).'), 350)
+    addMsg('bot', 'video_upload', {})
+    setChatState(S.VIDEO_UPLOAD)
+  }
+
+  const handleVideoSubmit = async ({ videoUrl, videoFile, videoFileName }) => {
+    patchData({ videoUrl, videoFile, videoFileName })
+    const hasVideo = videoUrl || videoFile
+    addMsg('user', 'text', { text: hasVideo ? t('Pitch video ready ✓') : t('Skipped') })
     await botSay(t('Tell us about your Work / Experience (maximum 500 words).'), 350)
     addMsg('bot', 'work', {})
     setChatState(S.WORK)
@@ -1022,6 +2343,23 @@ export default function ChatbotPage() {
   const handleLocalAreaSubmit = async (text) => {
     patchData({ localArea: text })
     addMsg('user', 'text', { text: t('Local area understanding added ✓') })
+    await botSay(t('Optional: Key Ward Development Priorities & Grievance Redressal Plan (Max 150 words each).'), 400)
+    addMsg('bot', 'short_texts', {})
+    setChatState(S.SHORT_TEXTS)
+  }
+
+  const handleShortTextsSubmit = async ({ devPriorities, grievancePlan }) => {
+    patchData({ devPriorities, grievancePlan })
+    const hasData = devPriorities || grievancePlan
+    addMsg('user', 'text', { text: hasData ? t('Additional ward details provided ✓') : t('Skipped') })
+    await botSay(t('Optional: Upload supporting Candidate Profile or Vision Document (PDF or DOCX).'), 400)
+    addMsg('bot', 'doc_upload', {})
+    setChatState(S.DOC_UPLOAD)
+  }
+
+  const handleDocUploadSubmit = async ({ docFile, docFileName }) => {
+    patchData({ docFile, docFileName })
+    addMsg('user', 'text', { text: docFile ? t('Supporting document ready ✓') : t('Skipped') })
     await botSay(t('Almost done! Please review all your details before submitting.'), 400)
     addMsg('bot', 'review', {})
     setChatState(S.REVIEW)
@@ -1035,9 +2373,59 @@ export default function ChatbotPage() {
     addMsg('user', 'text', { text: t('✓ Confirm & Submit') })
     setIsTyping(true)
     try {
+      await botSay(t('📤 Uploading candidate media & submitting application...'), 200)
+
+      let finalPhotoUrl = d.photoUrl || ''
+      let finalVideoUrl = d.videoUrl || ''
+      let finalDocUrl = d.documentUrl || ''
+
+      // 1. Upload photo to Cloudinary on final submit
+      if (d.photoFile) {
+        try {
+          const fd = new FormData()
+          fd.append('file', d.photoFile)
+          fd.append('mobile', mobileRef.current || 'general')
+          const photoRes = await chat.uploadMedia(fd)
+          if (photoRes?.url) finalPhotoUrl = photoRes.url
+        } catch (err) {
+          console.error('[Photo Upload Error]', err)
+        }
+      }
+
+      // 2. Upload pitch video MP4 to Cloudinary on final submit
+      if (d.videoFile) {
+        try {
+          const fd = new FormData()
+          fd.append('file', d.videoFile)
+          fd.append('mobile', mobileRef.current || 'general')
+          const videoRes = await chat.uploadMedia(fd)
+          if (videoRes?.url) finalVideoUrl = videoRes.url
+        } catch (err) {
+          console.error('[Video Upload Error]', err)
+        }
+      }
+
+      // 3. Upload PDF/DOCX document to Cloudinary on final submit
+      if (d.docFile) {
+        try {
+          const fd = new FormData()
+          fd.append('file', d.docFile)
+          fd.append('mobile', mobileRef.current || 'general')
+          const docRes = await chat.uploadMedia(fd)
+          if (docRes?.url) finalDocUrl = docRes.url
+        } catch (err) {
+          console.error('[Doc Upload Error]', err)
+        }
+      }
+
       const payload = {
         mobile: mobileRef.current,
         membership_id: d.membershipId,
+        photo_url: finalPhotoUrl,
+        video_url: finalVideoUrl,
+        document_url: finalDocUrl,
+        development_priorities: d.devPriorities,
+        grievance_plan: d.grievancePlan,
         epic_no: d.epic,
         voter: d.voter,
         body_type: d.bodyType,
@@ -1047,13 +2435,26 @@ export default function ChatbotPage() {
         work_experience: d.workExperience,
         local_area_understanding: d.localArea,
       }
+
       const res = await chat.submitApplication(payload)
       setIsTyping(false)
       if (res?.success) {
         await botSay(t('🎉 Submit Application — done!'), 250)
         addMsg('bot', 'submitted', {
-          result: { application_id: res.application_id, submitted_at: res.submitted_at, mobile: res.mobile || mobileRef.current },
+          result: {
+            application_id: res.application_id,
+            submitted_at: res.submitted_at,
+            mobile: res.mobile || mobileRef.current,
+            photo_url: finalPhotoUrl,
+            voter: d.voter,
+            name: d.voter?.name || d.name || 'Candidate',
+            epic_no: d.epic,
+            position_preferences: d.positionPrefs,
+            local_body: d.localBody,
+            body_type: d.bodyType,
+          },
         })
+
         setChatState(S.SUBMITTED)
       } else {
         await botSay(`❌ ${res?.message || t('Could not submit your application. Please review and try again.')}`, 250)
@@ -1082,7 +2483,8 @@ export default function ChatbotPage() {
     switch (chatState) {
       case S.AWAIT_MOBILE: return { type: 'tel', placeholder: t('Enter 10-digit mobile number'), maxLength: 10, inputMode: 'numeric' }
       case S.AWAIT_OTP: return { type: 'tel', placeholder: t('Enter OTP'), maxLength: 8, inputMode: 'numeric' }
-      case S.AWAIT_MEMBERSHIP: return { type: 'text', placeholder: t('Enter your BJP Membership ID'), maxLength: 40 }
+      case S.AWAIT_MEMBERSHIP: return { type: 'text', placeholder: t('Enter your BJP Membership ID (Optional)'), maxLength: 40 }
+
       case S.AWAIT_EPIC: return { type: 'text', placeholder: t('EPIC Number (e.g. ABC1234567)'), maxLength: 12 }
       default: return null
     }
@@ -1093,7 +2495,8 @@ export default function ChatbotPage() {
     const val = inputValue.trim()
     if (chatState === S.AWAIT_MOBILE) return val.length !== 10
     if (chatState === S.AWAIT_OTP) return val.length < 4
-    if (chatState === S.AWAIT_MEMBERSHIP) return !val
+    if (chatState === S.AWAIT_MEMBERSHIP) return false // Optional
+
     if (chatState === S.AWAIT_EPIC) return !/^[A-Z]{2,4}\d{6,8}$/.test(val.toUpperCase())
     return !val
   }
@@ -1143,6 +2546,14 @@ export default function ChatbotPage() {
         return <WelcomeBannerMsg onStart={handleStart} />
       case 'welcome_back_banner':
         return <WelcomeBackBannerMsg name={msg.name || appData.voter?.name} subtitle={msg.subtitle} />
+      case 'membership_card':
+        return (
+          <MembershipCardMsg
+            active={isLatest && chatState === S.AWAIT_MEMBERSHIP}
+            onSubmit={(customVal, skipped) => handleMembershipSubmit(customVal, skipped)}
+            disabled={isTyping}
+          />
+        )
       case 'voter_card':
         return (
           <VoterCardMsg
@@ -1153,6 +2564,17 @@ export default function ChatbotPage() {
             disabled={isTyping}
           />
         )
+      case 'photo_upload':
+        return (
+          <PhotoUploadMsg
+            active={isLatest && chatState === S.PHOTO_UPLOAD}
+            initial={{ photoUrl: appData.photoUrl }}
+            onSubmit={handlePhotoSubmit}
+            disabled={isTyping}
+          />
+        )
+
+
       case 'local_body':
         return (
           <LocalBodyMsg
@@ -1181,6 +2603,15 @@ export default function ChatbotPage() {
             disabled={isTyping}
           />
         )
+      case 'video_upload':
+        return (
+          <VideoUploadMsg
+            active={isLatest && chatState === S.VIDEO_UPLOAD}
+            initial={{ videoUrl: appData.videoUrl, videoFile: appData.videoFile, videoFileName: appData.videoFileName }}
+            onSubmit={handleVideoSubmit}
+            disabled={isTyping}
+          />
+        )
       case 'work':
         return (
           <LongTextMsg
@@ -1188,6 +2619,8 @@ export default function ChatbotPage() {
             title="Work / Experience"
             icon="briefcase-fill"
             prompt="Describe your work and experience (max 500 words)."
+            expectText="We expect details of your political involvement, party roles, public service, election campaign experience, or community leadership."
+            sampleText="Served as BJP Ward General Secretary for 3 years. Organized 20+ booth-level mobilization meetings, led Yuva Morcha membership drives, managed polling agents during assembly elections, and regularly petition local authorities for public civic issues."
             initial={appData.workExperience}
             onSubmit={handleWorkSubmit}
             disabled={isTyping}
@@ -1200,11 +2633,33 @@ export default function ChatbotPage() {
             title="Local Body Understanding"
             icon="chat-left-text-fill"
             prompt="Tell us about your area — key issues and what you want to change (max 500 words)."
+            expectText="We expect an analysis of key local issues (water, roads, sanitation, street lights, youth employment) in your ward/panchayat and your proposed solutions if elected."
             initial={appData.localArea}
             onSubmit={handleLocalAreaSubmit}
             disabled={isTyping}
           />
         )
+
+      case 'short_texts':
+        return (
+          <ShortTextsMsg
+            active={isLatest && chatState === S.SHORT_TEXTS}
+            initial={{ devPriorities: appData.devPriorities, grievancePlan: appData.grievancePlan }}
+            onSubmit={handleShortTextsSubmit}
+            disabled={isTyping}
+          />
+        )
+      case 'doc_upload':
+        return (
+          <DocUploadMsg
+            active={isLatest && chatState === S.DOC_UPLOAD}
+            initial={{ docFile: appData.docFile, docFileName: appData.docFileName }}
+            onSubmit={handleDocUploadSubmit}
+            disabled={isTyping}
+          />
+        )
+
+
       case 'review':
         return (
           <ReviewMsg
@@ -1217,14 +2672,18 @@ export default function ChatbotPage() {
           />
         )
       case 'submitted':
-        return <SubmittedMsg result={msg.result} alreadyApplied={msg.alreadyApplied} />
+        return <SubmittedMsg result={msg.result} alreadyApplied={msg.alreadyApplied} appData={appData} />
+
       default:
         return <span>{msg.text || ''}</span>
     }
   }
 
   const inputCfg = getInputCfg()
-  const wideTypes = ['voter_card', 'welcome_banner', 'welcome_back_banner', 'local_body', 'position', 'social', 'work', 'local_area', 'review', 'submitted']
+  const wideTypes = ['voter_card', 'membership_card', 'photo_upload', 'video_upload', 'short_texts', 'doc_upload', 'welcome_banner', 'welcome_back_banner', 'local_body', 'position', 'social', 'work', 'local_area', 'review', 'submitted']
+
+
+
 
   return (
     <div className="chatbot-app bjp-theme">
@@ -1414,7 +2873,40 @@ export default function ChatbotPage() {
           {/* Input area — render only when an active text/number input is required */}
           {inputCfg && (
             <footer className="chat-input-area">
+              {chatState === S.AWAIT_MEMBERSHIP && (
+                <div className="membership-quick-bar" style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '10px 14px',
+                  background: 'var(--color-abyss)',
+                  border: '1px solid var(--color-graphite)',
+                  borderRadius: 10,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  gap: 8,
+                }}>
+                  <a
+                    href="https://membership.bjp.org/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 12, color: 'var(--color-signal-mint)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.3 }}
+                  >
+                    <i className="bi bi-box-arrow-up-right" style={{ flexShrink: 0 }} />
+                    <span>{t("Aren't a BJP member? Apply Online & Proceed")}</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleMembershipSubmit('', true)}
+                    style={{ background: 'var(--color-carbon)', border: '1px solid var(--color-graphite)', color: 'var(--color-chalk)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                  >
+                    {t('Skip & Proceed')} <i className="bi bi-arrow-right" />
+                  </button>
+                </div>
+              )}
+
               <form className="chat-form" onSubmit={handleSubmit} style={{ position: 'relative' }}>
+
                 {sendHint && <div className="send-hint-bubble" role="status">{sendHint}</div>}
                 <div className="chat-input-wrapper">
                   <input

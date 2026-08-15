@@ -337,8 +337,13 @@
   border-top: 1px solid var(--color-graphite);
   min-height: 72px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
 }
+
 
 .chat-form {
   display: flex;
@@ -2550,3 +2555,82 @@
   background: var(--color-harvest-flame, #f26522);
   color: #fff;
 }
+
+/* ── Mobile Responsive Adjustments for Input, Quick Bar & Action Buttons ── */
+.card-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 520px) {
+  .chat-input-area {
+    padding: 10px 12px !important;
+  }
+  .membership-quick-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  .membership-quick-bar a {
+    text-align: center !important;
+    justify-content: center !important;
+  }
+  .membership-quick-bar button {
+    width: 100% !important;
+    text-align: center !important;
+    justify-content: center !important;
+  }
+  .card-action-btns {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .card-action-btns button {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    white-space: normal !important;
+    text-align: center !important;
+    justify-content: center !important;
+    word-break: break-word !important;
+  }
+}
+
+/* ── Universal Responsive Adjustments for Mobile Viewports ── */
+@media (max-width: 520px) {
+  .msg-bubble.wide {
+    padding: 10px 8px !important;
+    max-width: 100% !important;
+  }
+  .poster-card-modal {
+    padding: 6px !important;
+  }
+  .bjp-poster-916-card {
+    aspect-ratio: auto !important;
+    min-height: 500px !important;
+    padding: 12px 10px !important;
+    gap: 8px !important;
+  }
+  .bjp-poster-916-card .poster-header-text {
+    font-size: 10.5px !important;
+  }
+  .bjp-poster-916-card .poster-avatar-img {
+    width: 72px !important;
+    height: 72px !important;
+  }
+  .bjp-poster-916-card .poster-details-box {
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    gap: 4px !important;
+  }
+  .bjp-poster-916-card .poster-qr-img {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}
+
+
+

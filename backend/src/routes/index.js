@@ -1,11 +1,19 @@
 import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
+import multer from 'multer'
 import {
   postSendOtp, postVerifyOtp, postLookupVoter,
   postSubmitApplication, getApplication,
+  postUploadMedia, postOrganiserMessage,
 } from '../controllers/chatController.js'
 
 const router = Router()
+
+// In-memory storage — buffers are streamed straight to Backblaze B2.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB (videos)
+})
 
 // Tighter limit on OTP send to avoid SMS abuse
 const otpLimiter = rateLimit({
@@ -28,5 +36,7 @@ router.post('/verify-otp', generalLimiter, postVerifyOtp)
 router.post('/lookup-voter', generalLimiter, postLookupVoter)
 router.post('/submit-application', generalLimiter, postSubmitApplication)
 router.get('/application/:id', generalLimiter, getApplication)
+router.post('/upload/media', generalLimiter, upload.single('file'), postUploadMedia)
+router.post('/organiser-message', generalLimiter, postOrganiserMessage)
 
 export default router
