@@ -2178,10 +2178,14 @@ export default function ChatbotPage() {
     }
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
-      const sess = loadSession()
-      if (!sess && chatState !== S.WELCOME) { doAutoLogout(); return } // expired while tab was hidden
+      // Decide purely on real elapsed inactivity time — never on whether
+      // localStorage happens to hold a session. This avoids false logouts on
+      // tab switches / refreshes caused by any storage hiccup.
+      const elapsed = Date.now() - lastActivityRef.current
+      if (elapsed >= INACTIVITY_MS && chatState !== S.WELCOME) { doAutoLogout(); return }
       touchSession()
-      arm()
+      if (inactivityRef.current) clearTimeout(inactivityRef.current)
+      inactivityRef.current = setTimeout(() => doAutoLogout(), Math.max(1000, INACTIVITY_MS - elapsed))
     }
 
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'click']
