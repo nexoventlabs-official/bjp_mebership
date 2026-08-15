@@ -72,6 +72,9 @@ export const chat = {
   uploadMedia: (formData) =>
     api.post('/api/upload/media', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      // Media (esp. video) can be large and mobile uploads are slow — override
+      // the default 30s so uploads aren't silently cut off mid-transfer.
+      timeout: 300000, // 5 minutes
     }),
 }
 

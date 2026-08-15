@@ -2373,14 +2373,14 @@ export default function ChatbotPage() {
     addMsg('user', 'text', { text: t('✓ Confirm & Submit') })
     setIsTyping(true)
     try {
-      await botSay(t('📤 Uploading candidate media & submitting application...'), 200)
-
       let finalPhotoUrl = d.photoUrl || ''
       let finalVideoUrl = d.videoUrl || ''
       let finalDocUrl = d.documentUrl || ''
+      const uploadFailures = []
 
-      // 1. Upload photo to Cloudinary on final submit
+      // 1. Upload photo on final submit
       if (d.photoFile) {
+        await botSay(t('📤 Uploading your photo...'), 150)
         try {
           const fd = new FormData()
           fd.append('file', d.photoFile)
@@ -2389,11 +2389,13 @@ export default function ChatbotPage() {
           if (photoRes?.url) finalPhotoUrl = photoRes.url
         } catch (err) {
           console.error('[Photo Upload Error]', err)
+          uploadFailures.push(t('photo'))
         }
       }
 
-      // 2. Upload pitch video MP4 to Cloudinary on final submit
+      // 2. Upload pitch video on final submit
       if (d.videoFile) {
+        await botSay(t('🎥 Uploading your video — this can take a minute on mobile...'), 150)
         try {
           const fd = new FormData()
           fd.append('file', d.videoFile)
@@ -2402,11 +2404,13 @@ export default function ChatbotPage() {
           if (videoRes?.url) finalVideoUrl = videoRes.url
         } catch (err) {
           console.error('[Video Upload Error]', err)
+          uploadFailures.push(t('video'))
         }
       }
 
-      // 3. Upload PDF/DOCX document to Cloudinary on final submit
+      // 3. Upload PDF/DOCX document on final submit
       if (d.docFile) {
+        await botSay(t('📄 Uploading your document...'), 150)
         try {
           const fd = new FormData()
           fd.append('file', d.docFile)
@@ -2415,8 +2419,11 @@ export default function ChatbotPage() {
           if (docRes?.url) finalDocUrl = docRes.url
         } catch (err) {
           console.error('[Doc Upload Error]', err)
+          uploadFailures.push(t('document'))
         }
       }
+
+      await botSay(t('📝 Submitting your application...'), 150)
 
       const payload = {
         mobile: mobileRef.current,
@@ -2439,6 +2446,9 @@ export default function ChatbotPage() {
       const res = await chat.submitApplication(payload)
       setIsTyping(false)
       if (res?.success) {
+        if (uploadFailures.length) {
+          await botSay(`⚠️ ${t('Your application was submitted, but these uploads did not go through:')} ${uploadFailures.join(', ')}. ${t('You can add them later.')}`, 300)
+        }
         await botSay(t('🎉 Submit Application — done!'), 250)
         addMsg('bot', 'submitted', {
           result: {
