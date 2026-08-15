@@ -2086,7 +2086,7 @@ export default function ChatbotPage() {
 
     if (isActiveSession) {
       setChatState(sess.chatState)
-      if (sess.appData) setAppData(sess.appData)
+      if (sess.appData) setAppData({ ...emptyAppData(), ...sess.appData })
       if (sess.mobile) mobileRef.current = sess.mobile
 
       // Reconstruct messages for active step so chatbot application stays active and synchronized
@@ -2127,9 +2127,14 @@ export default function ChatbotPage() {
   // Persist session active state for active chatbot users (refreshed sliding 30-min window)
   useEffect(() => {
     if (chatState !== S.WELCOME && chatState !== S.SUBMITTED) {
+      // Persist only lightweight, serialisable fields. File objects can't be
+      // restored anyway, and the base64 `photoUrl` preview can be several MB —
+      // large enough to blow the localStorage quota, which would make the save
+      // fail silently and trigger false "inactivity" logouts on tab switches.
+      const { photoFile, videoFile, docFile, photoUrl, ...persistable } = appData
       saveSession({
         chatState,
-        appData,
+        appData: persistable,
         mobile: mobileRef.current,
       })
     } else {
