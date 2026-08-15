@@ -4,7 +4,7 @@ import multer from 'multer'
 import {
   postSendOtp, postVerifyOtp, postLookupVoter,
   postSubmitApplication, getApplication,
-  postUploadMedia, postOrganiserMessage,
+  postUploadMedia, postOrganiserMessage, getMediaProxy,
 } from '../controllers/chatController.js'
 
 const router = Router()
@@ -38,5 +38,8 @@ router.post('/submit-application', generalLimiter, postSubmitApplication)
 router.get('/application/:id', generalLimiter, getApplication)
 router.post('/upload/media', generalLimiter, upload.single('file'), postUploadMedia)
 router.post('/organiser-message', generalLimiter, postOrganiserMessage)
+// Public read-only media proxy (streams private B2 objects). Key may contain
+// slashes, so use a wildcard. Left unthrottled — responses are cache-friendly.
+router.get('/media/*', getMediaProxy)
 
 export default router

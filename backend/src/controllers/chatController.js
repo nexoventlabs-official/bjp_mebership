@@ -3,7 +3,7 @@ import { findVoterByEpic, toVoterProfile, isValidEpic, normalizeEpic } from '../
 import { createApplication, findApplicationById, findLatestApplicationByMobile } from '../models/applicationModel.js'
 import { isVoterDbOnline, isAppDbOnline, getAppDb } from '../config/db.js'
 import { positionsFor, URBAN_BODY_TYPES } from '../constants/localBodies.js'
-import { uploadMedia, b2Configured } from '../services/b2Service.js'
+import { uploadMedia, b2Configured, getMedia } from '../services/b2Service.js'
 
 // ── OTP ────────────────────────────────────────────────────────────
 export async function postSendOtp(req, res) {
@@ -240,7 +240,11 @@ export async function postUploadMedia(req, res) {
       mimeType: file.mimetype,
       folder: `bjp-localbody/${mobile}`,
     })
-    return res.json({ success: true, url: result.url, key: result.key, bytes: result.bytes })
+    // Serve media back through our own domain via the proxy below, so the B2
+    // bucket can stay private (no public-bucket requirement). Same-origin URLs
+    // also avoid CORS-tainting the html2canvas poster canvas.
+    const proxyUrl = `/api/media/${result.key}`
+    return res.json({ success: true, url: proxyUrl, key: result.key, bytes: result.bytes })
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Could not upload the file. Please try again.' })
   }
@@ -286,5 +290,42 @@ export async function postOrganiserMessage(req, res) {
     return res.json({ success: true, message: 'Your message has been sent.' })
   } catch (e) {
     return res.status(500).json({ success: false, message: 'Could not send your message. Please try again.' })
+  }
+}
+
+// ── Media proxy (streams private B2 objects through our domain) ────
+// GET /api/media/<key> — the key may contain slashes (wildcard route).
+// Supports HTTP Range so videos can be seeked/streamed in the browser.
+export async function getMediaProxy(req, res) {
+  if (!b2Configured()) {
+    return res.status(503).json({ success: false, message: 'Media is temporarily unavailable.' })
+  }
+  // Everything after /api/media/ is the object key. Reject path traversal.
+  const key = String(req.params[0] || '').trim()
+  if (!key || key.includes('..')) {
+    return res.status(400).json({ success: false, message: 'Invalid media reference.' })
+  }
+  try {
+    const obj = await getMedia(key, req.headers.range)
+
+    if (req.headers.range && obj.contentRange) {
+      res.status(206)
+      res.setHeader('Content-Range', obj.contentRange)
+    }
+    res.setHeader('Accept-Ranges', 'bytes')
+    res.setHeader('Content-Type', obj.contentType)
+    if (obj.contentLength != null) res.setHeader('Content-Length', obj.contentLength)
+    if (obj.etag) res.setHeader('ETag', obj.etag)
+    // Uploaded media is immutable (unique keys), so it can be cached hard.
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+
+    obj.body.on('error', () => { if (!res.headersSent) res.status(500).end(); else res.destroy() })
+    obj.body.pipe(res)
+  } catch (e) {
+    const notFound = e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404
+    return res.status(notFound ? 404 : 500).json({
+      success: false,
+      message: notFound ? 'Media not found.' : 'Could not load media.',
+    })
   }
 }

@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import sharp from 'sharp'
 import crypto from 'crypto'
 
@@ -66,4 +66,25 @@ export async function uploadMedia({ buffer, originalName, mimeType, folder = 'up
   }))
 
   return { url: publicUrl(key), key, contentType, bytes: outBuffer.length }
+}
+
+// Fetch a stored object for streaming back through our own domain (so the
+// bucket can stay private — no public-bucket requirement). Forwards an optional
+// HTTP Range header so browsers can seek within videos.
+export async function getMedia(key, range) {
+  if (!b2Configured()) throw new Error('B2_NOT_CONFIGURED')
+  const out = await client().send(new GetObjectCommand({
+    Bucket: process.env.B2_BUCKET_NAME,
+    Key: key,
+    Range: range || undefined,
+  }))
+  return {
+    body: out.Body, // Node.js Readable stream
+    contentType: out.ContentType || 'application/octet-stream',
+    contentLength: out.ContentLength,
+    contentRange: out.ContentRange,
+    acceptRanges: out.AcceptRanges,
+    lastModified: out.LastModified,
+    etag: out.ETag,
+  }
 }
