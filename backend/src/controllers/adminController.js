@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { signSession, COOKIE_NAME, SESSION_COOKIE_OPTS } from '../middleware/adminAuth.js'
 import { listApplications, getStats, getTopAssemblies, getReport, findApplicationById } from '../models/applicationModel.js'
-import { isAppDbOnline } from '../config/db.js'
+import { isAppDbOnline, getAppDb } from '../config/db.js'
 
 // Constant-time string compare to avoid leaking credential length/timing.
 function safeEqual(a, b) {
@@ -75,5 +75,13 @@ export async function getApplicationDetail(req, res) {
   if (!isAppDbOnline()) return res.status(503).json({ success: false, message: 'Application database unavailable.' })
   const app = await findApplicationById(req.params.id)
   if (!app) return res.status(404).json({ success: false, message: 'Application not found.' })
+
+  // Attach the one-time organiser message (stored in its own collection) in the
+  // shape the admin detail page expects: { text, sent_at }.
+  try {
+    const msg = await getAppDb().collection('organiser_messages').findOne({ application_id: app.application_id })
+    if (msg) app.organiser_message = { text: msg.message, sent_at: msg.created_at }
+  } catch (_) { /* non-fatal — detail still renders without the message */ }
+
   return res.json({ success: true, application: app })
 }
