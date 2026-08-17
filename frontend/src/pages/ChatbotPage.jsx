@@ -315,9 +315,9 @@ function MembershipCardMsg({ active, onSubmit, disabled }) {
 
   return (
     <div style={cardBox}>
-      <div style={cardTitle}><i className="bi bi-card-heading text-saffron" /> {t('BJP Membership ID (Optional)')}</div>
+      <div style={cardTitle}><i className="bi bi-card-heading text-saffron" /> {t('BJP Membership ID')} *</div>
       <div style={{ fontSize: 12, color: 'var(--color-ash)', lineHeight: 1.4 }}>
-        {t('Enter your BJP Membership ID if you are already a registered member.')}
+        {t('Your BJP Membership ID is required. Please enter it to continue.')}
       </div>
 
       <div style={{ background: 'var(--color-abyss)', padding: 12, borderRadius: 10, border: '1px solid var(--color-graphite)' }}>
@@ -338,28 +338,19 @@ function MembershipCardMsg({ active, onSubmit, disabled }) {
             style={controlStyle}
             type="text"
             value={val}
-            placeholder={t('Enter BJP Membership ID (Optional)')}
+            placeholder={t('Enter BJP Membership ID')}
             onChange={(e) => setVal(e.target.value)}
           />
 
           <div className="card-action-btns" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, width: '100%' }}>
 
             <button
-              style={secondaryBtn(!disabled)}
-              onClick={() => onSubmit('', true)}
-              disabled={disabled}
+              style={primaryBtn(Boolean(val.trim()) && !disabled)}
+              onClick={() => val.trim() && onSubmit(val.trim(), false)}
+              disabled={!val.trim() || disabled}
             >
-              {t('Skip & Proceed')} <i className="bi bi-arrow-right" />
+              {t('Continue')} <i className="bi bi-arrow-right" />
             </button>
-            {val.trim() && (
-              <button
-                style={primaryBtn(true)}
-                onClick={() => onSubmit(val.trim(), false)}
-                disabled={disabled}
-              >
-                {t('Continue')} <i className="bi bi-arrow-right" />
-              </button>
-            )}
           </div>
         </>
       )}
@@ -836,12 +827,12 @@ function PositionMsg({ active, bodyType, initial, onSubmit, disabled }) {
   )
 }
 
-// ── Social media (at least 1 valid URL) ────────────────────
+// ── Social media (optional, free text — any handle or link) ─
 const SOCIALS = [
-  { key: 'facebook', label: 'Facebook URL', icon: 'facebook', placeholder: 'https://facebook.com/yourpage' },
-  { key: 'instagram', label: 'Instagram URL', icon: 'instagram', placeholder: 'https://instagram.com/yourhandle' },
-  { key: 'twitter', label: 'Twitter / X URL', icon: 'twitter-x', placeholder: 'https://x.com/yourhandle' },
-  { key: 'youtube', label: 'YouTube URL', icon: 'youtube', placeholder: 'https://youtube.com/@yourchannel' },
+  { key: 'facebook', label: 'Facebook', icon: 'facebook', placeholder: 'Facebook page, username or link' },
+  { key: 'instagram', label: 'Instagram', icon: 'instagram', placeholder: 'Instagram handle or link' },
+  { key: 'twitter', label: 'Twitter / X', icon: 'twitter-x', placeholder: 'Twitter / X handle or link' },
+  { key: 'youtube', label: 'YouTube', icon: 'youtube', placeholder: 'YouTube channel or link' },
 ]
 
 function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
@@ -852,9 +843,6 @@ function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
 
   const handleContinue = () => {
     const filled = SOCIALS.map((s) => [s.key, (vals[s.key] || '').trim()]).filter(([, v]) => v)
-    for (const [k, v] of filled) {
-      if (!URL_RE.test(v)) { setError(t('Please enter a valid URL for {field}.', { field: k })); return }
-    }
     setError('')
     onSubmit(Object.fromEntries(filled))
   }
@@ -869,7 +857,7 @@ function SocialMediaMsg({ active, initial, onSubmit, disabled }) {
       {SOCIALS.map((s) => (
         <div key={s.key}>
           <span style={fieldLabel}><i className={`bi bi-${s.icon}`} style={{ marginRight: 6 }} />{t(s.label)}</span>
-          <input style={controlStyle} type="url" value={vals[s.key]} disabled={!active} placeholder={s.placeholder}
+          <input style={controlStyle} type="text" value={vals[s.key]} disabled={!active} placeholder={s.placeholder}
             onChange={(e) => { set(s.key, e.target.value); if (error) setError('') }} />
         </div>
       ))}
@@ -1337,11 +1325,6 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
     const pos = draft.positionPrefs[0] || ''
     if (!draft.bodyType || !localBodyComplete(draft.bodyType, draft.localBody, pos)) { setError(t('Please complete all local body fields.')); return }
     if (!pos) { setError(t('Position preference is required.')); return }
-    const filledSocial = Object.entries(draft.social).map(([k, val]) => [k, (val || '').trim()]).filter(([, val]) => val)
-    for (const [k, val] of filledSocial) {
-      if (!URL_RE.test(val)) { setError(t('Invalid URL for {field}.', { field: k })); return }
-    }
-
     if (!draft.workExperience.trim() || countWords(draft.workExperience) > MAX_WORDS) { setError(t('Work / experience is required (max 500 words).')); return }
     if (!draft.localArea.trim() || countWords(draft.localArea) > MAX_WORDS) { setError(t('Local area understanding is required (max 500 words).')); return }
     setError('')
@@ -2495,7 +2478,7 @@ export default function ChatbotPage() {
           setChatState(S.SUBMITTED)
           return
         }
-        await botSay(t('✅ Mobile verified! Please enter your BJP Membership ID (Optional).'), 300)
+        await botSay(t('✅ Mobile verified! Please enter your BJP Membership ID.'), 300)
         addMsg('bot', 'membership_card', {})
         setChatState(S.AWAIT_MEMBERSHIP)
       } else {
@@ -2507,11 +2490,15 @@ export default function ChatbotPage() {
     }
   }
 
-  const handleMembershipSubmit = async (customVal, skipped = false) => {
+  const handleMembershipSubmit = async (customVal) => {
     const rawVal = customVal !== undefined ? customVal : inputValue
-    const membershipId = skipped ? '' : String(rawVal || '').trim()
+    const membershipId = String(rawVal || '').trim()
+    if (!membershipId) {
+      flashSendHint(t('BJP Membership ID is required.'))
+      return
+    }
     patchData({ membershipId })
-    addMsg('user', 'text', { text: membershipId ? membershipId : t('Skipped') })
+    addMsg('user', 'text', { text: membershipId })
     setInputValue('')
     await botSay(t('Thank you. Now please enter your EPIC Number (Voter ID).'), 350)
     await botSay(t('Format: letters followed by digits, e.g. ABC1234567'), 200)
@@ -2757,7 +2744,7 @@ export default function ChatbotPage() {
     switch (chatState) {
       case S.AWAIT_MOBILE: return { type: 'tel', placeholder: t('Enter 10-digit mobile number'), maxLength: 10, inputMode: 'numeric' }
       case S.AWAIT_OTP: return { type: 'tel', placeholder: t('Enter OTP'), maxLength: 8, inputMode: 'numeric' }
-      case S.AWAIT_MEMBERSHIP: return { type: 'text', placeholder: t('Enter your BJP Membership ID (Optional)'), maxLength: 40 }
+      case S.AWAIT_MEMBERSHIP: return { type: 'text', placeholder: t('Enter your BJP Membership ID'), maxLength: 40 }
 
       case S.AWAIT_EPIC: return { type: 'text', placeholder: t('EPIC Number (e.g. ABC1234567)'), maxLength: 12 }
       default: return null
@@ -2769,7 +2756,7 @@ export default function ChatbotPage() {
     const val = inputValue.trim()
     if (chatState === S.AWAIT_MOBILE) return val.length !== 10
     if (chatState === S.AWAIT_OTP) return val.length < 4
-    if (chatState === S.AWAIT_MEMBERSHIP) return false // Optional
+    if (chatState === S.AWAIT_MEMBERSHIP) return !inputValue.trim() // Required
 
     if (chatState === S.AWAIT_EPIC) return !/^[A-Z]{2,4}\d{6,8}$/.test(val.toUpperCase())
     return !val
@@ -3178,15 +3165,8 @@ export default function ChatbotPage() {
                     style={{ fontSize: 12, color: 'var(--color-signal-mint)', fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 6, lineHeight: 1.3 }}
                   >
                     <i className="bi bi-box-arrow-up-right" style={{ flexShrink: 0 }} />
-                    <span>{t("Aren't a BJP member? Apply Online & Proceed")}</span>
+                    <span>{t("Aren't a BJP member? Apply Online")}</span>
                   </a>
-                  <button
-                    type="button"
-                    onClick={() => handleMembershipSubmit('', true)}
-                    style={{ background: 'var(--color-carbon)', border: '1px solid var(--color-graphite)', color: 'var(--color-chalk)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                  >
-                    {t('Skip & Proceed')} <i className="bi bi-arrow-right" />
-                  </button>
                 </div>
               )}
 
