@@ -15283,3 +15283,29 @@ export function positionsFor(bodyType) {
   if (bodyType === 'urban') return URBAN_POSITIONS
   return []
 }
+
+// Real counts derived from this master dataset (used by the admin dashboard,
+// so the DB2 stats reflect the actual data rather than hardcoded numbers).
+export function getMasterDataStats() {
+  const sumLists = (obj) => Object.values(obj).reduce((n, arr) => n + (Array.isArray(arr) ? arr.length : 0), 0)
+  let corporations = 0
+  let corporationWards = 0
+  for (const list of Object.values(CORPORATIONS_BY_DISTRICT)) {
+    for (const c of list) {
+      corporations += 1
+      corporationWards += Number(c?.wards) || 0
+    }
+  }
+  return {
+    districts: ALL_DISTRICTS.length,
+    corporations,
+    corporationWards,
+    municipalities: sumLists(MUNICIPALITIES_BY_DISTRICT),
+    townPanchayats: sumLists(TOWN_PANCHAYATS_BY_DISTRICT),
+    districtPanchayatDistricts: Object.keys(DISTRICT_PANCHAYAT_WARD_COUNT).length,
+    districtPanchayatWards: Object.values(DISTRICT_PANCHAYAT_WARD_COUNT).reduce((n, c) => n + (Number(c) || 0), 0),
+    panchayatUnions: sumLists(PANCHAYAT_UNIONS_BY_DISTRICT),
+    blocks: sumLists(BLOCKS_BY_DISTRICT),
+    villagePanchayats: sumLists(PANCHAYATS_BY_BLOCK),
+  }
+}

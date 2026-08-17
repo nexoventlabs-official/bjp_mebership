@@ -15,6 +15,7 @@ import {
 } from 'chart.js'
 import { Doughnut, Bar } from 'react-chartjs-2'
 import { admin } from '../../api'
+import { getMasterDataStats } from '../../data/localBodies.js'
 import '../../styles/admin.css'
 
 ChartJS.register(
@@ -61,6 +62,14 @@ export default function DashboardPage() {
   }, [])
 
   const s = stats || {}
+
+  // Real DB1 (voter roll) stats, precomputed on the server; DB2 counts derived
+  // live from the local-body master dataset — no hardcoded figures.
+  const vm = s.voterMeta || {}
+  const md = getMasterDataStats()
+  const fmtNum = (n) => Number(n || 0).toLocaleString('en-IN')
+  const fmtCrore = (n) => (n ? `${(n / 1e7).toFixed(2)} Crore` : '—')
+  const pct = (n) => (vm.total_voters ? ((n / vm.total_voters) * 100).toFixed(n < 100000 ? 3 : 1) : '0')
 
   if (loading) {
     return (
@@ -213,40 +222,40 @@ export default function DashboardPage() {
       {/* Voter DB (DB1) Analytics Cards */}
       <div style={{ marginTop: 24, marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#f76201', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <i className="bi bi-database-fill-check" /> Tamil Nadu Voter Roll Database (DB1) — 233 Assembly Constituencies
+          <i className="bi bi-database-fill-check" /> Tamil Nadu Voter Roll Database (DB1) — {vm.assemblies || 234} Assembly Constituencies
         </div>
         <div className="stat-cards-grid">
           <StatCard
             icon="people-fill"
             label="Total Voters (DB1)"
-            value="5.65 Crore"
+            value={fmtCrore(vm.total_voters)}
             color="#0ea5e9"
             bg="rgba(14, 165, 233, 0.12)"
-            subtitle="56,496,752 Total"
+            subtitle={`${fmtNum(vm.total_voters)} Total`}
           />
           <StatCard
             icon="gender-male"
             label="Male Voters"
-            value="2.80 Crore"
+            value={fmtCrore(vm.male)}
             color="#2563eb"
             bg="rgba(37, 99, 235, 0.12)"
-            subtitle="27,954,120 (49.5%)"
+            subtitle={`${fmtNum(vm.male)} (${pct(vm.male)}%)`}
           />
           <StatCard
             icon="gender-female"
             label="Female Voters"
-            value="2.85 Crore"
+            value={fmtCrore(vm.female)}
             color="#ec4899"
             bg="rgba(236, 72, 153, 0.12)"
-            subtitle="28,532,150 (50.5%)"
+            subtitle={`${fmtNum(vm.female)} (${pct(vm.female)}%)`}
           />
           <StatCard
             icon="person-arms-up"
             label="Third Gender / Other"
-            value="10,482"
+            value={fmtNum(vm.third_gender)}
             color="#a855f7"
             bg="rgba(168, 85, 247, 0.12)"
-            subtitle="10,482 (0.02%)"
+            subtitle={`${fmtNum(vm.third_gender)} (${pct(vm.third_gender)}%)`}
           />
         </div>
       </div>
@@ -254,56 +263,56 @@ export default function DashboardPage() {
       {/* Master Ward Data DB (DB2) Analytics Cards — All 6 Excel Datasets */}
       <div style={{ marginTop: 24, marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: '#02a14d', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <i className="bi bi-diagram-3-fill" /> Tamil Nadu Local Body & Ward Master Database (DB2) — 6 Excel Master Files
+          <i className="bi bi-diagram-3-fill" /> Tamil Nadu Local Body & Ward Master Database (DB2) — {md.districts} Districts
         </div>
         <div className="stat-cards-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
           <StatCard
             icon="building-fill"
             label="1. Municipal Corporations"
-            value="25 Corps"
+            value={`${md.corporations} Corps`}
             color="#f59e0b"
             bg="rgba(245, 158, 11, 0.12)"
-            subtitle="1,566 Wards"
+            subtitle={`${fmtNum(md.corporationWards)} Wards`}
           />
           <StatCard
             icon="buildings-fill"
             label="2. Municipalities"
-            value="162 Munis"
+            value={`${md.municipalities} Munis`}
             color="#2563eb"
             bg="rgba(37, 99, 235, 0.12)"
-            subtitle="162 Municipalities"
+            subtitle={`${md.municipalities} Municipalities`}
           />
           <StatCard
             icon="houses-fill"
             label="3. Town Panchayats"
-            value="458 TPs"
+            value={`${md.townPanchayats} TPs`}
             color="#6366f1"
             bg="rgba(99, 102, 241, 0.12)"
-            subtitle="458 Town Panchayats"
+            subtitle={`${md.townPanchayats} Town Panchayats`}
           />
           <StatCard
             icon="award-fill"
             label="4. District Panchayat Wards"
-            value="36 Districts"
+            value={`${md.districtPanchayatDistricts} Districts`}
             color="#8b5cf6"
             bg="rgba(139, 92, 246, 0.12)"
-            subtitle="36 Rural Districts"
+            subtitle={`${fmtNum(md.districtPanchayatWards)} Wards`}
           />
           <StatCard
             icon="diagram-2-fill"
             label="5. Panchayat Unions"
-            value="388 Unions"
+            value={`${md.panchayatUnions} Unions`}
             color="#06b6d4"
             bg="rgba(6, 182, 212, 0.12)"
-            subtitle="388 Blocks / Unions"
+            subtitle={`${md.blocks} Blocks / Unions`}
           />
           <StatCard
             icon="tree-fill"
             label="6. Grama Panchayats"
-            value="12,525 VPs"
+            value={`${fmtNum(md.villagePanchayats)} VPs`}
             color="#02a14d"
             bg="rgba(2, 161, 77, 0.12)"
-            subtitle="12,525 Village Panchayats"
+            subtitle={`${fmtNum(md.villagePanchayats)} Village Panchayats`}
           />
         </div>
       </div>

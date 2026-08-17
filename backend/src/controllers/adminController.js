@@ -39,8 +39,12 @@ export function postLogout(req, res) {
 export async function getDashboardStats(req, res) {
   if (!isAppDbOnline()) return res.status(503).json({ success: false, message: 'Application database unavailable.' })
   try {
-    const [stats, topAssemblies] = await Promise.all([getStats(), getTopAssemblies(10)])
-    return res.json({ success: true, ...stats, topAssemblies })
+    const [stats, topAssemblies, voterMeta] = await Promise.all([
+      getStats(),
+      getTopAssemblies(10),
+      getAppDb().collection('db_meta').findOne({ _id: 'voter_stats' }).catch(() => null),
+    ])
+    return res.json({ success: true, ...stats, topAssemblies, voterMeta: voterMeta || null })
   } catch {
     return res.status(500).json({ success: false, message: 'Could not load stats.' })
   }
