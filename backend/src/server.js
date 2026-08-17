@@ -52,13 +52,18 @@ app.use('/admin/api', adminRoutes)
 
 app.use((req, res) => res.status(404).json({ success: false, message: 'Route not found.' }))
 
-const PORT = process.env.PORT || 5000
+const defaultPort = process.env.NODE_ENV === 'production' ? 10000 : 5000
+const rawPort = parseInt(process.env.PORT || String(defaultPort), 10)
+const PORT = (!isNaN(rawPort) && rawPort >= 1 && rawPort <= 65535) ? rawPort : defaultPort
 
 function validateEnv() {
-  const missing = ['MONGO_VOTER_URL', 'MONGO_APP_URL', 'SMS_API_KEY'].filter((k) => !process.env[k])
-  if (missing.length) {
-    console.error(`[bjp] FATAL: missing required environment variables: ${missing.join(', ')}`)
+  const missingRequired = ['MONGO_VOTER_URL', 'MONGO_APP_URL'].filter((k) => !process.env[k])
+  if (missingRequired.length) {
+    console.error(`[bjp] FATAL: missing required environment variables: ${missingRequired.join(', ')}`)
     process.exit(1)
+  }
+  if (!process.env.SMS_API_KEY) {
+    console.warn(`[bjp] WARNING: SMS_API_KEY is not set. Dev OTP bypass (123456) will be used for testing.`)
   }
 }
 

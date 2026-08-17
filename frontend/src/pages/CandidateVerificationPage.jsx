@@ -62,22 +62,24 @@ export default function CandidateVerificationPage() {
   const candName = appData?.voter?.name || 'Candidate'
   const epicNo = appData?.voter?.epic_no || appData?.epic_no || 'N/A'
   const photoUrl = appData?.photo_url || appData?.photoUrl || appData?.photo_preview || appData?.voter?.photo || ''
-  const candidateImg = photoUrl && photoUrl.trim() ? photoUrl : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300'
+  const candidateImg = photoUrl && photoUrl.trim() ? photoUrl : '/bjp_logo.png'
   const posPrefs = appData?.position_preferences || []
   const primaryPos = posPrefs[0] || 'Local Body Candidate'
 
   // Location summary
   const getLbSummary = () => {
     if (!appData) return 'Tamil Nadu Local Body'
+    // The backend stores location under `local_body` (not `ward_details`).
+    const lb = appData.local_body || {}
     if (appData.body_type === 'urban') {
-      const type = appData.ward_details?.urban_type || 'Urban Local Body'
-      const name = appData.ward_details?.urban_body_name || ''
-      const ward = appData.ward_details?.ward || ''
+      const type = lb.local_body_type || 'Urban Local Body'
+      const name = lb.local_body || ''
+      const ward = lb.ward || ''
       return [type, name, ward ? `Ward ${ward}` : ''].filter(Boolean).join(' - ')
     }
-    const union = appData.ward_details?.panchayat_union || ''
-    const panchayat = appData.ward_details?.village_panchayat || ''
-    const ward = appData.ward_details?.ward || ''
+    const union = lb.panchayat_union || ''
+    const panchayat = lb.village_panchayat || ''
+    const ward = lb.ward || ''
     return [union, panchayat, ward ? `Ward ${ward}` : ''].filter(Boolean).join(' - ')
   }
 

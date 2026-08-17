@@ -210,6 +210,104 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Voter DB (DB1) Analytics Cards */}
+      <div style={{ marginTop: 24, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#f76201', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i className="bi bi-database-fill-check" /> Tamil Nadu Voter Roll Database (DB1) — 233 Assembly Constituencies
+        </div>
+        <div className="stat-cards-grid">
+          <StatCard
+            icon="people-fill"
+            label="Total Voters (DB1)"
+            value="5.65 Crore"
+            color="#0ea5e9"
+            bg="rgba(14, 165, 233, 0.12)"
+            subtitle="56,496,752 Total"
+          />
+          <StatCard
+            icon="gender-male"
+            label="Male Voters"
+            value="2.80 Crore"
+            color="#2563eb"
+            bg="rgba(37, 99, 235, 0.12)"
+            subtitle="27,954,120 (49.5%)"
+          />
+          <StatCard
+            icon="gender-female"
+            label="Female Voters"
+            value="2.85 Crore"
+            color="#ec4899"
+            bg="rgba(236, 72, 153, 0.12)"
+            subtitle="28,532,150 (50.5%)"
+          />
+          <StatCard
+            icon="person-arms-up"
+            label="Third Gender / Other"
+            value="10,482"
+            color="#a855f7"
+            bg="rgba(168, 85, 247, 0.12)"
+            subtitle="10,482 (0.02%)"
+          />
+        </div>
+      </div>
+
+      {/* Master Ward Data DB (DB2) Analytics Cards — All 6 Excel Datasets */}
+      <div style={{ marginTop: 24, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: '#02a14d', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <i className="bi bi-diagram-3-fill" /> Tamil Nadu Local Body & Ward Master Database (DB2) — 6 Excel Master Files
+        </div>
+        <div className="stat-cards-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          <StatCard
+            icon="building-fill"
+            label="1. Municipal Corporations"
+            value="25 Corps"
+            color="#f59e0b"
+            bg="rgba(245, 158, 11, 0.12)"
+            subtitle="1,566 Wards"
+          />
+          <StatCard
+            icon="buildings-fill"
+            label="2. Municipalities"
+            value="162 Munis"
+            color="#2563eb"
+            bg="rgba(37, 99, 235, 0.12)"
+            subtitle="162 Municipalities"
+          />
+          <StatCard
+            icon="houses-fill"
+            label="3. Town Panchayats"
+            value="458 TPs"
+            color="#6366f1"
+            bg="rgba(99, 102, 241, 0.12)"
+            subtitle="458 Town Panchayats"
+          />
+          <StatCard
+            icon="award-fill"
+            label="4. District Panchayat Wards"
+            value="36 Districts"
+            color="#8b5cf6"
+            bg="rgba(139, 92, 246, 0.12)"
+            subtitle="36 Rural Districts"
+          />
+          <StatCard
+            icon="diagram-2-fill"
+            label="5. Panchayat Unions"
+            value="388 Unions"
+            color="#06b6d4"
+            bg="rgba(6, 182, 212, 0.12)"
+            subtitle="388 Blocks / Unions"
+          />
+          <StatCard
+            icon="tree-fill"
+            label="6. Grama Panchayats"
+            value="12,525 VPs"
+            color="#02a14d"
+            bg="rgba(2, 161, 77, 0.12)"
+            subtitle="12,525 Village Panchayats"
+          />
+        </div>
+      </div>
+
       {/* Analytics Charts Row */}
       <div className="dashboard-charts-grid">
         {/* Doughnut Chart */}

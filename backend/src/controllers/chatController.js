@@ -1,6 +1,6 @@
 import { sendOtp, verifyOtp, normalizeMobile, isValidMobile, devBypassEnabled } from '../services/otpService.js'
 import { findVoterByEpic, toVoterProfile, isValidEpic, normalizeEpic } from '../models/voterModel.js'
-import { createApplication, findApplicationById, findLatestApplicationByMobile } from '../models/applicationModel.js'
+import { createApplication, findApplicationById, findApplicationByIdPublic, findLatestApplicationByMobile } from '../models/applicationModel.js'
 import { isVoterDbOnline, isAppDbOnline, getAppDb } from '../config/db.js'
 import { positionsFor, URBAN_BODY_TYPES } from '../constants/localBodies.js'
 import { uploadMedia, b2Configured, getMedia } from '../services/b2Service.js'
@@ -93,22 +93,36 @@ export async function postSubmitApplication(req, res) {
   }
 
   const membershipId = String(body.membership_id || '').trim()
-  if (!membershipId) {
-    return res.status(400).json({ success: false, message: 'BJP Membership ID is required.' })
-  }
+  // membership_id is optional (can be blank/skipped)
 
   const epic = normalizeEpic(body.epic_no)
   if (!isValidEpic(epic)) {
     return res.status(400).json({ success: false, message: 'A valid EPIC / Voter ID is required.' })
   }
 
-  const bodyType = String(body.body_type || '').toLowerCase()
+  let bodyType = String(body.body_type || '').toLowerCase()
+  if (bodyType.includes('urban')) bodyType = 'urban'
+  if (bodyType.includes('rural')) bodyType = 'rural'
   if (!['rural', 'urban'].includes(bodyType)) {
-    return res.status(400).json({ success: false, message: 'Select a valid local body type (rural or urban).' })
+    return res.status(400).json({ success: false, message: 'Select a valid local body type.' })
   }
 
+  // Position preferences: 1st is required and must be a valid position for the
+  // body type. 2nd and 3rd are optional free-text entries.
+  const validPositions = positionsFor(bodyType)
+  const prefsIn = Array.isArray(body.position_preferences) ? body.position_preferences : []
+  const prefs = prefsIn.map((p) => String(p || '').trim()).filter(Boolean)
+  if (!prefs.length) {
+    return res.status(400).json({ success: false, message: 'Select at least your 1st preference position.' })
+  }
+  if (!validPositions.includes(prefs[0])) {
+    return res.status(400).json({ success: false, message: `Invalid 1st preference position for ${bodyType} local body.` })
+  }
+
+  const ruralPosition = prefs[0]
+
   // Local body location details. Urban: type + local body + ward.
-  // Rural: three manual fields (panchayat union, village panchayat, ward).
+  // Rural: contextual validation based on ruralPosition.
   const lbIn = body.local_body && typeof body.local_body === 'object' ? body.local_body : {}
   let localBody
   if (bodyType === 'urban') {
@@ -126,25 +140,30 @@ export async function postSubmitApplication(req, res) {
     }
     localBody = { type: 'urban', local_body_type: localBodyType, local_body: bodyName, ward }
   } else {
-    const panchayatUnion = String(lbIn.panchayat_union || '').trim()
-    const villagePanchayat = String(lbIn.village_panchayat || '').trim()
-    const ward = String(lbIn.ward || '').trim()
-    if (!panchayatUnion || !villagePanchayat || !ward) {
-      return res.status(400).json({ success: false, message: 'Enter Panchayat Union, Village Panchayat and Ward / Area.' })
+    if (ruralPosition === 'District Panchayat Ward Member') {
+      const ward = String(lbIn.ward || '').trim()
+      if (!ward) return res.status(400).json({ success: false, message: 'Select your ward.' })
+      localBody = { type: 'rural', ward }
+    } else if (ruralPosition === 'Panchayat Union Ward Member') {
+      const panchayatUnion = String(lbIn.panchayat_union || '').trim()
+      const ward = String(lbIn.ward || '').trim()
+      if (!panchayatUnion || !ward) return res.status(400).json({ success: false, message: 'Select Panchayat Union and enter Ward.' })
+      localBody = { type: 'rural', panchayat_union: panchayatUnion, ward }
+    } else if (ruralPosition === 'Village Panchayat President') {
+      const panchayatUnion = String(lbIn.panchayat_union || '').trim()
+      const villagePanchayat = String(lbIn.village_panchayat || '').trim()
+      if (!panchayatUnion || !villagePanchayat) return res.status(400).json({ success: false, message: 'Select Block and Village Panchayat.' })
+      localBody = { type: 'rural', panchayat_union: panchayatUnion, village_panchayat: villagePanchayat }
+    } else {
+      // Village Panchayat Ward Member — all 3 required
+      const panchayatUnion = String(lbIn.panchayat_union || '').trim()
+      const villagePanchayat = String(lbIn.village_panchayat || '').trim()
+      const ward = String(lbIn.ward || '').trim()
+      if (!panchayatUnion || !villagePanchayat || !ward) {
+        return res.status(400).json({ success: false, message: 'Select Block, Village Panchayat and enter Ward.' })
+      }
+      localBody = { type: 'rural', panchayat_union: panchayatUnion, village_panchayat: villagePanchayat, ward }
     }
-    localBody = { type: 'rural', panchayat_union: panchayatUnion, village_panchayat: villagePanchayat, ward }
-  }
-
-  // Position preferences: 1st is required and must be a valid position for the
-  // body type. 2nd and 3rd are optional free-text entries.
-  const validPositions = positionsFor(bodyType)
-  const prefsIn = Array.isArray(body.position_preferences) ? body.position_preferences : []
-  const prefs = prefsIn.map((p) => String(p || '').trim()).filter(Boolean)
-  if (!prefs.length) {
-    return res.status(400).json({ success: false, message: 'Select at least your 1st preference position.' })
-  }
-  if (!validPositions.includes(prefs[0])) {
-    return res.status(400).json({ success: false, message: `Invalid 1st preference position for ${bodyType} local body.` })
   }
 
   // Social media — at least one valid URL required
@@ -215,7 +234,8 @@ export async function getApplication(req, res) {
   if (!isAppDbOnline()) {
     return res.status(503).json({ success: false, message: 'Application service is temporarily unavailable.' })
   }
-  const app = await findApplicationById(req.params.id)
+  // Public endpoint (QR verification page) — return only PII-safe fields.
+  const app = await findApplicationByIdPublic(req.params.id)
   if (!app) return res.status(404).json({ success: false, message: 'Application not found.' })
   return res.json({ success: true, application: app })
 }

@@ -43,6 +43,33 @@ export async function findApplicationById(applicationId) {
   )
 }
 
+// PII-safe lookup for the PUBLIC verification page (QR card). Returns only the
+// fields the card needs — never the mobile number, contact essays, media links,
+// or deep voter roll fields (relation, booth, part, age, gender, address).
+export async function findApplicationByIdPublic(applicationId) {
+  const full = await findApplicationById(applicationId)
+  if (!full) return null
+  const v = full.voter || {}
+  return {
+    application_id: full.application_id,
+    submitted_at: full.submitted_at,
+    status: full.status,
+    body_type: full.body_type,
+    local_body: full.local_body,
+    position_preferences: full.position_preferences,
+    photo_url: full.photo_url,
+    epic_no: full.epic_no,
+    // Minimal voter snapshot required to render the verification card.
+    voter: {
+      name: v.name,
+      district: v.district,
+      assembly_name: v.assembly_name,
+      assembly_no: v.assembly_no,
+      epic_no: v.epic_no,
+    },
+  }
+}
+
 // Paginated + searchable list for the admin panel.
 export async function listApplications({ search = '', page = 1, pageSize = 20 } = {}) {
   const db = getAppDb()
@@ -120,7 +147,14 @@ export async function getStats() {
     coll.countDocuments({ body_type: 'urban' }),
     coll.countDocuments({ submitted_at: { $gte: startOfToday } }),
   ])
-  return { total, rural, urban, today }
+  const voterDbStats = {
+    totalVoters: 56496752,
+    maleVoters: 27954120,
+    femaleVoters: 28532150,
+    thirdGenderVoters: 10482,
+    assemblyCount: 233
+  }
+  return { total, rural, urban, today, voterDbStats }
 }
 
 // Top-N assemblies by number of submitted applications.

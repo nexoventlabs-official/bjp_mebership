@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: bjp-localbody-backend
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://bjp-mebership.vercel.app
+      - key: VOTER_DB_URI
+        value: mongodb+srv://doadmin:K1jb38520POU7pv4@db-mdb-blr1-62418-1d213a0a.mongo.ondigitalocean.com/voter_db?authSource=admin&tls=true
+      - key: APP_DB_URI
+        value: mongodb+srv://tmisgowthaamand_db_user:P8TgXH68RnnnNbD7@cluster0.j9z0eyx.mongodb.net/election_app?retryWrites=true&w=majority&appName=Cluster0
+      - key: WARD_DB_URI
+        value: mongodb+srv://tmisgowthaamand_db_user:P8TgXH68RnnnNbD7@cluster0.j9z0eyx.mongodb.net/ward_db?retryWrites=true&w=majority&appName=Cluster0
+      - key: ADMIN_JWT_SECRET
+        value: bjp_localbody_super_secret_jwt_key_2026
+      - key: B2_APPLICATION_KEY_ID
+        value: 00548ca7ce1e17d0000000002
+      - key: B2_KEY_ID
+        value: 00548ca7ce1e17d0000000002
+      - key: B2_APPLICATION_KEY
+        value: K005/rI3F30bA17W9b7jG5w07hVl15Q
+      - key: B2_APP_KEY
+        value: K005/rI3F30bA17W9b7jG5w07hVl15Q
+      - key: B2_BUCKET_NAME
+        value: bjp-localbody-media
+      - key: B2_ENDPOINT
+        value: s3.us-east-005.backblazeb2.com
+      - key: FAST2SMS_API_KEY
+        value: dev_bypass

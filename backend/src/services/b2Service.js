@@ -7,13 +7,15 @@ import crypto from 'crypto'
 let _client = null
 function client() {
   if (_client) return _client
-  const endpoint = process.env.B2_ENDPOINT || ''
+  const endpoint = process.env.B2_ENDPOINT || 's3.us-east-005.backblazeb2.com'
+  const keyId = process.env.B2_KEY_ID || process.env.B2_APPLICATION_KEY_ID || ''
+  const appKey = process.env.B2_APP_KEY || process.env.B2_APPLICATION_KEY || ''
   _client = new S3Client({
     endpoint: endpoint.startsWith('http') ? endpoint : `https://${endpoint}`,
     region: process.env.B2_REGION || 'us-east-005',
     credentials: {
-      accessKeyId: process.env.B2_KEY_ID,
-      secretAccessKey: process.env.B2_APP_KEY,
+      accessKeyId: keyId,
+      secretAccessKey: appKey,
     },
     forcePathStyle: true,
   })
@@ -21,13 +23,18 @@ function client() {
 }
 
 export function b2Configured() {
-  return !!(process.env.B2_KEY_ID && process.env.B2_APP_KEY && process.env.B2_BUCKET_NAME)
+  const keyId = process.env.B2_KEY_ID || process.env.B2_APPLICATION_KEY_ID || ''
+  const appKey = process.env.B2_APP_KEY || process.env.B2_APPLICATION_KEY || ''
+  const bucketName = process.env.B2_BUCKET_NAME || ''
+  return !!(keyId && appKey && bucketName)
 }
 
 function publicUrl(key) {
-  const base = (process.env.B2_PUBLIC_BASE
-    || `https://${process.env.B2_BUCKET_NAME}.${process.env.B2_ENDPOINT}`).replace(/\/+$/, '')
-  return `${base}/${key}`
+  if (process.env.B2_PUBLIC_BASE) {
+    const base = process.env.B2_PUBLIC_BASE.replace(/\/+$/, '')
+    return `${base}/${key}`
+  }
+  return `/api/media/${key}`
 }
 
 const rand = () => crypto.randomBytes(6).toString('hex')

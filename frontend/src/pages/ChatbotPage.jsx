@@ -2,7 +2,12 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { chat } from '../api'
 import '../styles/chatbot.css'
 import { useLang } from '../i18n/LanguageContext'
-import { positionsFor, URBAN_BODY_TYPES, bodiesForType } from '../data/localBodies.js'
+import {
+  ALL_DISTRICTS, RURAL_POSITIONS, URBAN_POSITIONS, URBAN_BODY_TYPES,
+  corporationsForDistrict, municipalitiesForDistrict, townPanchayatsForDistrict,
+  wardsForCorporation, districtPanchayatWards, unionsForDistrict, blocksForDistrict,
+  panchayatsForBlock, positionsFor
+} from '../data/localBodies.js'
 import html2canvas from 'html2canvas'
 import QRCode from 'qrcode'
 
@@ -15,6 +20,7 @@ const S = {
   AWAIT_MEMBERSHIP: 'AWAIT_MEMBERSHIP',
   AWAIT_EPIC:       'AWAIT_EPIC',
   CONFIRM_VOTER:    'CONFIRM_VOTER',
+  DISTRICT:         'DISTRICT',
   PHOTO_UPLOAD:     'PHOTO_UPLOAD',
   LOCAL_BODY:       'LOCAL_BODY',
   POSITION:         'POSITION',
@@ -84,6 +90,7 @@ const emptyAppData = () => ({
   videoUrl: '',
   epic: '',
   voter: null,
+  contestDistrict: '',
   bodyType: '',
   localBody: emptyLocalBody(),
   positionPrefs: ['', '', ''],
@@ -156,12 +163,23 @@ function localBodyPayload(bodyType, lb) {
   if (bodyType === 'urban') {
     return { type: 'urban', local_body_type: lb.urbanType, local_body: lb.urbanBody, ward: lb.urbanWard }
   }
-  return { type: 'rural', panchayat_union: lb.ruralUnion, village_panchayat: lb.ruralPanchayat, ward: lb.ruralWard }
+  return {
+    type: 'rural',
+    panchayat_union: lb.ruralUnion || undefined,
+    village_panchayat: lb.ruralPanchayat || undefined,
+    ward: lb.ruralWard || undefined
+  }
 }
 
-function localBodyComplete(bodyType, lb) {
-  if (bodyType === 'urban') return !!(lb.urbanType && lb.urbanBody && lb.urbanWard.trim())
-  if (bodyType === 'rural') return !!(lb.ruralUnion.trim() && lb.ruralPanchayat.trim() && lb.ruralWard.trim())
+function localBodyComplete(bodyType, lb, ruralPosition = '') {
+  if (bodyType === 'urban') return !!(lb.urbanType && lb.urbanBody && lb.urbanWard && String(lb.urbanWard).trim())
+  if (bodyType === 'rural') {
+    if (ruralPosition === 'District Panchayat Ward Member') return !!(lb.ruralWard && String(lb.ruralWard).trim())
+    if (ruralPosition === 'Panchayat Union Ward Member') return !!(lb.ruralUnion && lb.ruralWard && String(lb.ruralWard).trim())
+    if (ruralPosition === 'Village Panchayat President') return !!(lb.ruralUnion && lb.ruralPanchayat)
+    if (ruralPosition === 'Village Panchayat Ward Member') return !!(lb.ruralUnion && lb.ruralPanchayat && lb.ruralWard && String(lb.ruralWard).trim())
+    return !!(lb.ruralUnion || lb.ruralPanchayat || lb.ruralWard)
+  }
   return false
 }
 
@@ -436,16 +454,130 @@ function PhotoUploadMsg({ active, initial, onSubmit, disabled }) {
   )
 }
 
-// ── Local Body step (rural/urban + dynamic fields) ─────────
-function LocalBodyMsg({ active, initial, onSubmit, disabled }) {
+// ── Contesting District Step (Step 8) ──────────────────────────────
+function DistrictMsg({ active, initial, voterDistrict, onSubmit, disabled }) {
   const { t } = useLang()
-  const [bodyType, setBodyType] = useState(initial?.bodyType || '')
-  const [lb, setLb] = useState(initial?.localBody || emptyLocalBody())
+  const [district, setDistrict] = useState(initial || voterDistrict || 'Chennai')
 
-  const set = (patch) => setLb((prev) => ({ ...prev, ...patch }))
-  const ready = bodyType && localBodyComplete(bodyType, lb)
+  useEffect(() => {
+    if (initial) setDistrict(initial)
+  }, [initial])
 
-  const urbanBodies = bodyType === 'urban' && lb.urbanType ? bodiesForType(lb.urbanType) : []
+  const handleSelectChange = (e) => {
+    const newDist = e.target.value
+    setDistrict(newDist)
+    if (newDist && onSubmit) {
+      onSubmit({ district: newDist })
+    }
+  }
+
+  return (
+    <div style={cardBox}>
+      <div style={cardTitle}>
+        <i className="bi bi-pin-map-fill" style={{ color: 'var(--color-saffron)' }} /> {t('Contest District')}
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--color-ash)', marginBottom: 12 }}>
+        {voterDistrict ? t('Your voter district is {district}. You can confirm it or select ANY district you wish to contest from.', { district: voterDistrict })
+          : t('Select the district from which you plan to contest the local body election.')}
+      </p>
+
+      <div>
+        <span style={fieldLabel}>{t('District to Contest From')}<span style={{ color: '#e74c3c' }}> *</span></span>
+        <select style={controlStyle} value={district} disabled={disabled}
+          onChange={handleSelectChange}>
+          <option value="">{t('Select district')}</option>
+          {ALL_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+
+      {active && (
+        <button style={primaryBtn(Boolean(district) && !disabled)} disabled={!district || disabled}
+          onClick={() => district && onSubmit({ district })}>
+          {t('Confirm District')} <i className="bi bi-arrow-right" />
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Local Body step (7 Position Flows with Cascading Dropdowns) ─────
+function LocalBodyMsg({ active, contestDistrict, initial, onSubmit, disabled }) {
+  const { t } = useLang()
+  const [bodyType, setBodyType] = useState(initial?.bodyType || 'urban')
+
+  // Urban local body selections
+  const [urbanBodyType, setUrbanBodyType] = useState(initial?.localBody?.urbanType || '')
+  const [urbanBodyName, setUrbanBodyName] = useState(initial?.localBody?.urbanBody || '')
+  const [urbanWard, setUrbanWard] = useState(initial?.localBody?.urbanWard || '')
+
+  // Rural local body selections
+  const [ruralPosition, setRuralPosition] = useState(initial?.positionPrefs?.[0] || RURAL_POSITIONS[0])
+  const [ruralUnion, setRuralUnion] = useState(initial?.localBody?.ruralUnion || '')
+  const [ruralBlock, setRuralBlock] = useState(initial?.localBody?.ruralUnion || '')
+  const [ruralPanchayat, setRuralPanchayat] = useState(initial?.localBody?.ruralPanchayat || '')
+  const [ruralWard, setRuralWard] = useState(initial?.localBody?.ruralWard || '')
+
+  const dist = contestDistrict || 'Chennai'
+
+  // Reset dependent selections if contestDistrict changes
+  useEffect(() => {
+    setUrbanBodyName('')
+    setUrbanWard('')
+    setRuralUnion('')
+    setRuralBlock('')
+    setRuralPanchayat('')
+    setRuralWard('')
+  }, [contestDistrict])
+
+  // Options dynamically populated for contestDistrict
+  const corps = corporationsForDistrict(dist)
+  const munis = municipalitiesForDistrict(dist)
+  const tps = townPanchayatsForDistrict(dist)
+  const corpWards = urbanBodyType === 'Corporation' ? wardsForCorporation(urbanBodyName) : []
+
+  const distWards = districtPanchayatWards(dist)
+  const unions = unionsForDistrict(dist)
+  const blocks = blocksForDistrict(dist)
+  const panchayats = panchayatsForBlock(ruralBlock)
+
+  const isReady = () => {
+    if (bodyType === 'urban') {
+      return Boolean(urbanBodyType && urbanBodyName && String(urbanWard).trim())
+    } else {
+      if (ruralPosition === 'District Panchayat Ward Member') return Boolean(String(ruralWard).trim())
+      if (ruralPosition === 'Panchayat Union Ward Member') return Boolean(ruralUnion && String(ruralWard).trim())
+      if (ruralPosition === 'Village Panchayat President') return Boolean(ruralBlock && ruralPanchayat)
+      if (ruralPosition === 'Village Panchayat Ward Member') return Boolean(ruralBlock && ruralPanchayat && String(ruralWard).trim())
+      return false
+    }
+  }
+
+  const handleSubmit = () => {
+    if (!isReady()) return
+    if (bodyType === 'urban') {
+      const autoPos = urbanBodyType === 'Corporation' ? 'Corporation Ward Member'
+        : urbanBodyType === 'Municipality' ? 'Municipality Ward Member'
+        : 'Town Panchayat Ward Member'
+      onSubmit({
+        bodyType: 'urban',
+        localBody: { urbanType: urbanBodyType, urbanBody: urbanBodyName, urbanWard },
+        positionPrefs: [autoPos, '', '']
+      })
+    } else {
+      const unionVal = (ruralPosition === 'Village Panchayat President' || ruralPosition === 'Village Panchayat Ward Member')
+        ? ruralBlock
+        : ruralUnion
+      onSubmit({
+        bodyType: 'rural',
+        localBody: {
+          ruralUnion: unionVal,
+          ruralPanchayat: ruralPosition.includes('Village') ? ruralPanchayat : '',
+          ruralWard: ruralPosition === 'Village Panchayat President' ? '' : ruralWard
+        },
+        positionPrefs: [ruralPosition, '', '']
+      })
+    }
+  }
 
   const typeBtn = (val, title, sub) => (
     <button
@@ -469,71 +601,177 @@ function LocalBodyMsg({ active, initial, onSubmit, disabled }) {
 
   return (
     <div style={cardBox}>
-      <div style={cardTitle}><i className="bi bi-geo-alt-fill" /> {t('Local Body Details')}</div>
+      <div style={cardTitle}>
+        <i className="bi bi-geo-alt-fill" /> {t('Local Body & Position Details')}
+        {dist && (
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'rgba(255,102,0,0.15)', color: '#FF6600', marginLeft: 8 }}>
+            📍 {dist}
+          </span>
+        )}
+      </div>
 
       <div>
         <span style={fieldLabel}>{t('Local body type')}</span>
         <div style={{ display: 'flex', gap: 10 }}>
-          {typeBtn('rural', t('Rural Local Body'), t('Panchayats, Unions, District Panchayat'))}
-          {typeBtn('urban', t('Urban Local Body'), t('Town Panchayats, Municipalities, Corporations'))}
+          {typeBtn('urban', t('Urban Local Body'), t('Corporations, Municipalities, Town Panchayats'))}
+          {typeBtn('rural', t('Rural Local Body'), t('District Panchayat, Unions, Village Panchayats'))}
         </div>
       </div>
 
-      {/* URBAN: local body type -> local body -> ward */}
+      {/* URBAN FLOWS (Flow 1, Flow 2, Flow 3) */}
       {bodyType === 'urban' && (
         <>
           <div>
-            <span style={fieldLabel}>{t('Select Local Body Type')}</span>
-            <select style={controlStyle} value={lb.urbanType} disabled={!active}
-              onChange={(e) => set({ urbanType: e.target.value, urbanBody: '' })}>
-              <option value="">{t('Select local body type')}</option>
+            <span style={fieldLabel}>{t('Urban Body Type')}</span>
+            <select style={controlStyle} value={urbanBodyType} disabled={!active}
+              onChange={(e) => { setUrbanBodyType(e.target.value); setUrbanBodyName(''); setUrbanWard('') }}>
+              <option value="">{t('Select urban body type')}</option>
               {URBAN_BODY_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
             </select>
           </div>
-          <div>
-            <span style={fieldLabel}>{t('Select Local Body')}</span>
-            <select style={controlStyle} value={lb.urbanBody} disabled={!active || !lb.urbanType}
-              onChange={(e) => set({ urbanBody: e.target.value })}>
-              <option value="">{lb.urbanType ? t('Select local body') : t('Select local body type first')}</option>
-              {urbanBodies.map((b) => <option key={b.label} value={b.name}>{b.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <span style={fieldLabel}>{t('Enter Ward / Area')}</span>
-            <input style={controlStyle} type="text" value={lb.urbanWard} disabled={!active}
-              placeholder={t('e.g. Ward 12 / area name')}
-              onChange={(e) => set({ urbanWard: e.target.value })} />
-          </div>
+
+          {/* FLOW 1: Corporation */}
+          {urbanBodyType === 'Corporation' && (
+            <>
+              <div>
+                <span style={fieldLabel}>{t('Corporation Name ({district})', { district: dist })}</span>
+                <select style={controlStyle} value={urbanBodyName} disabled={!active}
+                  onChange={(e) => { setUrbanBodyName(e.target.value); setUrbanWard('') }}>
+                  <option value="">{t('Select Corporation')}</option>
+                  {corps.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={fieldLabel}>{t('Ward Number')}</span>
+                <select style={controlStyle} value={urbanWard} disabled={!active || !urbanBodyName}
+                  onChange={(e) => setUrbanWard(e.target.value)}>
+                  <option value="">{urbanBodyName ? t('Select Ward') : t('Select Corporation first')}</option>
+                  {corpWards.map((w) => <option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* FLOW 2: Municipality */}
+          {urbanBodyType === 'Municipality' && (
+            <>
+              <div>
+                <span style={fieldLabel}>{t('Municipality Name ({district})', { district: dist })}</span>
+                <select style={controlStyle} value={urbanBodyName} disabled={!active}
+                  onChange={(e) => setUrbanBodyName(e.target.value)}>
+                  <option value="">{t('Select Municipality')}</option>
+                  {munis.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={fieldLabel}>{t('Ward Number / Name')}</span>
+                <input style={controlStyle} type="text" value={urbanWard} disabled={!active}
+                  placeholder={t('e.g. Ward 12')}
+                  onChange={(e) => setUrbanWard(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          {/* FLOW 3: Town Panchayat */}
+          {urbanBodyType === 'Town Panchayat' && (
+            <>
+              <div>
+                <span style={fieldLabel}>{t('Town Panchayat Name ({district})', { district: dist })}</span>
+                <select style={controlStyle} value={urbanBodyName} disabled={!active}
+                  onChange={(e) => setUrbanBodyName(e.target.value)}>
+                  <option value="">{t('Select Town Panchayat')}</option>
+                  {tps.map((tp) => <option key={tp} value={tp}>{tp}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={fieldLabel}>{t('Ward Number / Name')}</span>
+                <input style={controlStyle} type="text" value={urbanWard} disabled={!active}
+                  placeholder={t('e.g. Ward 5')}
+                  onChange={(e) => setUrbanWard(e.target.value)} />
+              </div>
+            </>
+          )}
         </>
       )}
 
-      {/* RURAL: three manual fields */}
+      {/* RURAL FLOWS (Flow 4, Flow 5, Flow 6, Flow 7) */}
       {bodyType === 'rural' && (
         <>
           <div>
-            <span style={fieldLabel}>{t('Panchayat Union (Block)')}</span>
-            <input style={controlStyle} type="text" value={lb.ruralUnion} disabled={!active}
-              placeholder={t('Enter Panchayat Union / Block')}
-              onChange={(e) => set({ ruralUnion: e.target.value })} />
+            <span style={fieldLabel}>{t('Select Position to Contest')}</span>
+            <select style={controlStyle} value={ruralPosition} disabled={!active}
+              onChange={(e) => { setRuralPosition(e.target.value); setRuralWard(''); setRuralUnion(''); setRuralBlock(''); setRuralPanchayat('') }}>
+              {RURAL_POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+            </select>
           </div>
-          <div>
-            <span style={fieldLabel}>{t('Village Panchayat')}</span>
-            <input style={controlStyle} type="text" value={lb.ruralPanchayat} disabled={!active}
-              placeholder={t('Enter Village Panchayat')}
-              onChange={(e) => set({ ruralPanchayat: e.target.value })} />
-          </div>
-          <div>
-            <span style={fieldLabel}>{t('Enter Ward / Area')}</span>
-            <input style={controlStyle} type="text" value={lb.ruralWard} disabled={!active}
-              placeholder={t('e.g. Ward 3 / area name')}
-              onChange={(e) => set({ ruralWard: e.target.value })} />
-          </div>
+
+          {/* FLOW 4: District Panchayat Ward Member */}
+          {ruralPosition === 'District Panchayat Ward Member' && (
+            <div>
+              <span style={fieldLabel}>{t('District Panchayat Ward ({district})', { district: dist })}</span>
+              <select style={controlStyle} value={ruralWard} disabled={!active}
+                onChange={(e) => setRuralWard(e.target.value)}>
+                <option value="">{t('Select Ward')}</option>
+                {distWards.map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* FLOW 5: Panchayat Union Ward Member */}
+          {ruralPosition === 'Panchayat Union Ward Member' && (
+            <>
+              <div>
+                <span style={fieldLabel}>{t('Panchayat Union ({district})', { district: dist })}</span>
+                <select style={controlStyle} value={ruralUnion} disabled={!active}
+                  onChange={(e) => setRuralUnion(e.target.value)}>
+                  <option value="">{t('Select Panchayat Union')}</option>
+                  {unions.map((u) => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={fieldLabel}>{t('Ward Number / Name')}</span>
+                <input style={controlStyle} type="text" value={ruralWard} disabled={!active}
+                  placeholder={t('e.g. Ward 4')}
+                  onChange={(e) => setRuralWard(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          {/* FLOW 6 & FLOW 7: Village Panchayat President / Ward Member */}
+          {(ruralPosition === 'Village Panchayat President' || ruralPosition === 'Village Panchayat Ward Member') && (
+            <>
+              <div>
+                <span style={fieldLabel}>{t('Block ({district})', { district: dist })}</span>
+                <select style={controlStyle} value={ruralBlock} disabled={!active}
+                  onChange={(e) => { setRuralBlock(e.target.value); setRuralPanchayat('') }}>
+                  <option value="">{t('Select Block')}</option>
+                  {blocks.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <span style={fieldLabel}>{t('Village Panchayat')}</span>
+                <select style={controlStyle} value={ruralPanchayat} disabled={!active || !ruralBlock}
+                  onChange={(e) => setRuralPanchayat(e.target.value)}>
+                  <option value="">{ruralBlock ? t('Select Village Panchayat') : t('Select Block first')}</option>
+                  {panchayats.map((vp) => <option key={vp} value={vp}>{vp}</option>)}
+                </select>
+              </div>
+              {ruralPosition === 'Village Panchayat Ward Member' && (
+                <div>
+                  <span style={fieldLabel}>{t('Ward Number / Name')}</span>
+                  <input style={controlStyle} type="text" value={ruralWard} disabled={!active}
+                    placeholder={t('e.g. Ward 2')}
+                    onChange={(e) => setRuralWard(e.target.value)} />
+                </div>
+              )}
+            </>
+          )}
         </>
       )}
 
       {active && (
-        <button style={primaryBtn(ready && !disabled)} disabled={!ready || disabled}
-          onClick={() => ready && onSubmit({ bodyType, localBody: lb })}>
+        <button style={primaryBtn(isReady() && !disabled)} disabled={!isReady() || disabled}
+          onClick={handleSubmit}>
           {t('Continue')} <i className="bi bi-arrow-right" />
         </button>
       )}
@@ -1094,11 +1332,11 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
   })
   const setSocial = (k, val) => setDraft((prev) => ({ ...prev, social: { ...prev.social, [k]: val } }))
   const availableFor = (idx) => options.filter((o) => !draft.positionPrefs.some((p, i) => i !== idx && p === o))
-  const draftUrbanBodies = draft.bodyType === 'urban' && draft.localBody.urbanType ? bodiesForType(draft.localBody.urbanType) : []
 
   const saveEdits = () => {
-    if (!draft.bodyType || !localBodyComplete(draft.bodyType, draft.localBody)) { setError(t('Please complete all local body fields.')); return }
-    if (!draft.positionPrefs[0]) { setError(t('1st preference position is required.')); return }
+    const pos = draft.positionPrefs[0] || ''
+    if (!draft.bodyType || !localBodyComplete(draft.bodyType, draft.localBody, pos)) { setError(t('Please complete all local body fields.')); return }
+    if (!pos) { setError(t('Position preference is required.')); return }
     const filledSocial = Object.entries(draft.social).map(([k, val]) => [k, (val || '').trim()]).filter(([, val]) => val)
     for (const [k, val] of filledSocial) {
       if (!URL_RE.test(val)) { setError(t('Invalid URL for {field}.', { field: k })); return }
@@ -1129,7 +1367,8 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
       <ReviewSection title={t('Voter & Booth')} icon="geo-alt-fill">
         <KV k={t('EPIC No')} v={v.epic_no} />
         <KV k={t('Assembly')} v={[v.assembly_name, v.assembly_no].filter(Boolean).join(' — ') || v.assembly_no} />
-        <KV k={t('District')} v={v.district} />
+        <KV k={t('Voter District')} v={v.district} />
+        <KV k={t('Contesting District')} v={cur.contestDistrict || v.district} />
         <KV k={t('Part / Booth')} v={[v.part_no, v.booth_name].filter(Boolean).join(' — ')} />
       </ReviewSection>
 
@@ -1137,6 +1376,7 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
       <ReviewSection title={t('Local Body & Position')} icon="building-fill">
         {!editing ? (
           <>
+            <KV k={t('Position to Contest')} v={cur.positionPrefs[0]} />
             <KV k={t('Local Body Type')} v={cur.bodyType === 'rural' ? t('Rural') : cur.bodyType === 'urban' ? t('Urban') : ''} />
             {cur.bodyType === 'urban' && (
               <>
@@ -1147,19 +1387,24 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
             )}
             {cur.bodyType === 'rural' && (
               <>
-                <KV k={t('Panchayat Union')} v={lb.ruralUnion} />
-                <KV k={t('Village Panchayat')} v={lb.ruralPanchayat} />
-                <KV k={t('Ward / Area')} v={lb.ruralWard} />
+                {lb.ruralUnion && <KV k={t('Panchayat Union / Block')} v={lb.ruralUnion} />}
+                {lb.ruralPanchayat && <KV k={t('Village Panchayat')} v={lb.ruralPanchayat} />}
+                {lb.ruralWard && <KV k={t('Ward / Area')} v={lb.ruralWard} />}
               </>
             )}
-            {cur.positionPrefs.filter(Boolean).map((p, i) => (
-              <KV key={i} k={t(['1st Preference', '2nd Preference', '3rd Preference'][i])} v={p} />
-            ))}
           </>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <span style={fieldLabel}>{t('Contesting District')}</span>
+              <select style={controlStyle} value={draft.contestDistrict || v.district || ''}
+                onChange={(e) => setDraftField({ contestDistrict: e.target.value })}>
+                {ALL_DISTRICTS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+
             <div style={{ display: 'flex', gap: 8 }}>
-              {['rural', 'urban'].map((bt) => (
+              {['urban', 'rural'].map((bt) => (
                 <button key={bt} type="button"
                   onClick={() => setDraft((prev) => ({ ...prev, bodyType: bt, localBody: emptyLocalBody(), positionPrefs: ['', '', ''] }))}
                   style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer',
@@ -1174,15 +1419,12 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
             {draft.bodyType === 'urban' && (
               <>
                 <select style={controlStyle} value={draft.localBody.urbanType}
-                  onChange={(e) => setLb({ urbanType: e.target.value, urbanBody: '' })}>
+                  onChange={(e) => setLb({ urbanType: e.target.value, urbanBody: '', urbanWard: '' })}>
                   <option value="">{t('Select local body type')}</option>
                   {URBAN_BODY_TYPES.map((ty) => <option key={ty} value={ty}>{ty}</option>)}
                 </select>
-                <select style={controlStyle} value={draft.localBody.urbanBody} disabled={!draft.localBody.urbanType}
-                  onChange={(e) => setLb({ urbanBody: e.target.value })}>
-                  <option value="">{t('Select local body')}</option>
-                  {draftUrbanBodies.map((b) => <option key={b.label} value={b.name}>{b.label}</option>)}
-                </select>
+                <input style={controlStyle} type="text" placeholder={t('Enter Local Body Name')}
+                  value={draft.localBody.urbanBody} onChange={(e) => setLb({ urbanBody: e.target.value })} />
                 <input style={controlStyle} type="text" placeholder={t('Enter Ward / Area')}
                   value={draft.localBody.urbanWard} onChange={(e) => setLb({ urbanWard: e.target.value })} />
               </>
@@ -1190,7 +1432,11 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
 
             {draft.bodyType === 'rural' && (
               <>
-                <input style={controlStyle} type="text" placeholder={t('Panchayat Union (Block)')}
+                <select style={controlStyle} value={draft.positionPrefs[0] || RURAL_POSITIONS[0]}
+                  onChange={(e) => setPref(0, e.target.value)}>
+                  {RURAL_POSITIONS.map((pos) => <option key={pos} value={pos}>{pos}</option>)}
+                </select>
+                <input style={controlStyle} type="text" placeholder={t('Panchayat Union / Block')}
                   value={draft.localBody.ruralUnion} onChange={(e) => setLb({ ruralUnion: e.target.value })} />
                 <input style={controlStyle} type="text" placeholder={t('Village Panchayat')}
                   value={draft.localBody.ruralPanchayat} onChange={(e) => setLb({ ruralPanchayat: e.target.value })} />
@@ -1198,17 +1444,6 @@ function ReviewMsg({ active, data, mobile, onConfirm, onEdit, disabled }) {
                   value={draft.localBody.ruralWard} onChange={(e) => setLb({ ruralWard: e.target.value })} />
               </>
             )}
-
-            <select style={controlStyle} value={draft.positionPrefs[0]} onChange={(e) => setPref(0, e.target.value)}>
-              <option value="">{t('1st Preference *')}</option>
-              {options.map((p) => <option key={p} value={p}>{p}</option>)}
-            </select>
-            <input style={controlStyle} type="text" value={draft.positionPrefs[1] || ''}
-              placeholder={t('2nd Preference (optional)')}
-              onChange={(e) => setPref(1, e.target.value)} />
-            <input style={controlStyle} type="text" value={draft.positionPrefs[2] || ''}
-              placeholder={t('3rd Preference (optional)')}
-              onChange={(e) => setPref(2, e.target.value)} />
           </div>
         )}
       </ReviewSection>
@@ -2081,48 +2316,14 @@ export default function ChatbotPage() {
     if (initializedRef.current) return
     initializedRef.current = true
 
-    const sess = loadSession()
-    const isActiveSession = sess && sess.chatState && ![S.WELCOME, S.SUBMITTED].includes(sess.chatState)
-
-    if (isActiveSession) {
-      setChatState(sess.chatState)
-      if (sess.appData) setAppData({ ...emptyAppData(), ...sess.appData })
-      if (sess.mobile) mobileRef.current = sess.mobile
-
-      // Reconstruct messages for active step so chatbot application stays active and synchronized
-      const restoredMsgs = [{ id: 'wb-1', from: 'bot', type: 'welcome_banner', ts: new Date() }]
-      const stepTypeMap = {
-        [S.AWAIT_MEMBERSHIP]: 'membership_card',
-        [S.PHOTO_UPLOAD]: 'photo_upload',
-        [S.LOCAL_BODY]: 'local_body',
-        [S.POSITION]: 'position',
-        [S.SOCIAL]: 'social',
-        [S.VIDEO_UPLOAD]: 'video_upload',
-        [S.WORK]: 'work',
-        [S.LOCAL_AREA]: 'local_area',
-        [S.SHORT_TEXTS]: 'short_texts',
-        [S.DOC_UPLOAD]: 'doc_upload',
-        [S.REVIEW]: 'review',
-      }
-      if (stepTypeMap[sess.chatState]) {
-        restoredMsgs.push({ id: 'st-1', from: 'bot', type: stepTypeMap[sess.chatState], ts: new Date() })
-      } else if (sess.chatState === S.AWAIT_MOBILE) {
-        restoredMsgs.push({ id: 'm-1', from: 'bot', type: 'text', text: t('Welcome! Let us begin. Please enter your 10-digit mobile number.'), ts: new Date() })
-      } else if (sess.chatState === S.AWAIT_OTP) {
-        const mob = sess.mobile ? maskMobile(sess.mobile) : ''
-        restoredMsgs.push({ id: 'm-1', from: 'bot', type: 'text', text: t('An OTP has been sent to {mobile}. Please enter it below.', { mobile: mob }), ts: new Date() })
-      }
-      setMessages(restoredMsgs)
-    } else {
-      clearSession()
-      stopOtpCountdown()
-      setAppData(emptyAppData())
-      mobileRef.current = ''
-      setMessages([])
-      addMsg('bot', 'welcome_banner', {})
-      setChatState(S.WELCOME)
-    }
-  }, [addMsg, t])
+    clearSession()
+    stopOtpCountdown()
+    setAppData(emptyAppData())
+    mobileRef.current = ''
+    setMessages([])
+    addMsg('bot', 'welcome_banner', {})
+    setChatState(S.WELCOME)
+  }, [addMsg])
 
   // Persist session active state for active chatbot users (refreshed sliding 30-min window)
   useEffect(() => {
@@ -2223,6 +2424,9 @@ export default function ChatbotPage() {
 
   // ── Flow handlers ────────────────────────────────────────
   const handleStart = async () => {
+    clearSession()
+    mobileRef.current = ''
+    setAppData(emptyAppData())
     addMsg('user', 'text', { text: t('Start Application') })
     setChatState(S.AWAIT_MOBILE)
     await botSay(t('Welcome! Let us begin. Please enter your 10-digit mobile number.'), 400)
@@ -2339,6 +2543,10 @@ export default function ChatbotPage() {
 
   const handleConfirmVoter = async () => {
     addMsg('user', 'text', { text: t('✓ Details confirmed') })
+    const defDist = appData.voter?.district || 'Chennai'
+    if (!appData.contestDistrict) {
+      patchData({ contestDistrict: defDist })
+    }
     await botSay(t('Please upload your Candidate Passport Size Photo (Max 15 MB).'), 350)
     addMsg('bot', 'photo_upload', {})
     setChatState(S.PHOTO_UPLOAD)
@@ -2348,7 +2556,20 @@ export default function ChatbotPage() {
     patchData({ photoFile, photoUrl })
     startBackgroundUpload('photo', photoFile) // upload now, in the background
     addMsg('user', 'text', { text: photoUrl ? t('Passport photo ready ✓') : t('Skipped') })
-    await botSay(t('Great! Now, choose your Local Body type and fill in your area details.'), 350)
+    await botSay(t('Please confirm or select the District you are contesting in.'), 350)
+    addMsg('bot', 'district', {})
+    setChatState(S.DISTRICT)
+  }
+
+  const handleDistrictSubmit = async ({ district }) => {
+    patchData({ contestDistrict: district })
+    const alreadyHasLocalBody = messages.some((m) => m.type === 'local_body')
+    if (chatState === S.LOCAL_BODY || alreadyHasLocalBody) {
+      // Already on Local Body step or card already present — update district in-place without adding any extra cards
+      return
+    }
+    addMsg('user', 'text', { text: t('Contesting District: {district}', { district }) })
+    await botSay(t('Great! Now, choose your Local Body & Position details in {district}.', { district }), 350)
     addMsg('bot', 'local_body', {})
     setChatState(S.LOCAL_BODY)
   }
@@ -2361,12 +2582,17 @@ export default function ChatbotPage() {
     setChatState(S.AWAIT_EPIC)
   }
 
-  const handleLocalBodySubmit = async ({ bodyType, localBody }) => {
-    patchData({ bodyType, localBody, positionPrefs: ['', '', ''] })
-    addMsg('user', 'text', { text: `${bodyType === 'rural' ? t('Rural') : t('Urban')} · ${localBodySummary(bodyType, localBody)}` })
-    await botSay(t('Now select the Position to Contest with your preferences.'), 350)
-    addMsg('bot', 'position', {})
-    setChatState(S.POSITION)
+  const handleLocalBodySubmit = async ({ contestDistrict, bodyType, localBody, positionPrefs }) => {
+    const patch = { bodyType, localBody, positionPrefs }
+    if (contestDistrict) patch.contestDistrict = contestDistrict
+    patchData(patch)
+    const summary = localBodySummary(bodyType, localBody)
+    const pos = positionPrefs?.[0] || ''
+    const distName = contestDistrict || appData.contestDistrict || ''
+    addMsg('user', 'text', { text: `${distName ? distName + ' · ' : ''}${bodyType === 'rural' ? t('Rural') : t('Urban')} · ${pos}${summary ? ' · ' + summary : ''}` })
+    await botSay(t('Please add your social media profiles (Optional).'), 350)
+    addMsg('bot', 'social', {})
+    setChatState(S.SOCIAL)
   }
 
   const handlePositionSubmit = async (prefs) => {
@@ -2612,6 +2838,16 @@ export default function ChatbotPage() {
             disabled={isTyping}
           />
         )
+      case 'district':
+        return (
+          <DistrictMsg
+            active={isLatest && chatState === S.DISTRICT}
+            initial={appData.contestDistrict}
+            defaultDistrict={appData.voter?.district}
+            onSubmit={handleDistrictSubmit}
+            disabled={isTyping}
+          />
+        )
       case 'photo_upload':
         return (
           <PhotoUploadMsg
@@ -2627,7 +2863,8 @@ export default function ChatbotPage() {
         return (
           <LocalBodyMsg
             active={isLatest && chatState === S.LOCAL_BODY}
-            initial={{ bodyType: appData.bodyType, localBody: appData.localBody }}
+            contestDistrict={appData.contestDistrict || appData.voter?.district || 'Chennai'}
+            initial={{ bodyType: appData.bodyType, localBody: appData.localBody, positionPrefs: appData.positionPrefs }}
             onSubmit={handleLocalBodySubmit}
             disabled={isTyping}
           />
